@@ -1,0 +1,53 @@
+DELIMITER $$
+
+DROP FUNCTION IF EXISTS `formatar_telefone` $$
+CREATE DEFINER=`root`@`localhost` FUNCTION `formatar_telefone`(telefone VARCHAR(20), ddd VARCHAR(2)) RETURNS varchar(20) CHARSET latin1
+    DETERMINISTIC
+BEGIN
+    DECLARE resultado VARCHAR(20);
+    DECLARE num_telefone VARCHAR(20);
+    DECLARE i INT DEFAULT 1;
+    DECLARE c CHAR(1);
+
+    SET num_telefone = '';
+
+    -- Remove caracteres não numéricos
+    WHILE i <= LENGTH(telefone) DO
+        SET c = SUBSTRING(telefone, i, 1);
+        IF c BETWEEN '0' AND '9' THEN
+            SET num_telefone = CONCAT(num_telefone, c);
+        END IF;
+        SET i = i + 1;
+    END WHILE;
+
+    -- Verifica se é um número 0800
+    IF LEFT(num_telefone, 4) = '0800' THEN
+        IF LENGTH(num_telefone) = 10 THEN
+            SET resultado = CONCAT('0800-', SUBSTRING(num_telefone, 5, 3), '-', SUBSTRING(num_telefone, 8, 4));
+        ELSEIF LENGTH(num_telefone) = 11 THEN
+            SET resultado = CONCAT('0800-', SUBSTRING(num_telefone, 5, 3), '-', SUBSTRING(num_telefone, 8, 4));
+        ELSE
+            SET resultado = num_telefone; -- Retorna o número original se o comprimento for inválido para 0800
+        END IF;
+    ELSEIF LENGTH(num_telefone) = 8 THEN
+        -- Adiciona o '9' e formata como número de 9 dígitos sem DDD
+        SET num_telefone = CONCAT('9', num_telefone);
+        SET resultado = CONCAT('(', ddd, ')9', SUBSTRING(num_telefone, 1, 4), '-', SUBSTRING(num_telefone, 5, 4));
+    ELSEIF LENGTH(num_telefone) = 9 THEN
+        -- Formata número de 9 dígitos sem DDD, usando o DDD fornecido
+        SET resultado = CONCAT('(', ddd, ')9', SUBSTRING(num_telefone, 1, 4), '-', SUBSTRING(num_telefone, 5, 4));
+    ELSEIF LENGTH(num_telefone) = 10 THEN
+        -- Numero ja possui DDD, retorna o numero original formatado
+        SET resultado = CONCAT('(', SUBSTRING(num_telefone, 1, 2), ')9', SUBSTRING(num_telefone, 3, 4), '-', SUBSTRING(num_telefone, 7, 4));
+    ELSEIF LENGTH(num_telefone) = 11 THEN
+        -- Numero ja possui DDD, retorna o numero original formatado
+        SET resultado = CONCAT('(', SUBSTRING(num_telefone, 1, 2), ')', SUBSTRING(num_telefone, 3, 5), '-', SUBSTRING(num_telefone, 8, 4));
+    ELSE
+        -- Retorna o número original se o comprimento for inválido
+        SET resultado = telefone;
+    END IF;
+
+    RETURN resultado;
+END $$
+
+DELIMITER ;

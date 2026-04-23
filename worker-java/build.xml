@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Arquivo de build do projeto HOST Migration gerado para NetBeans 8.x+  -->
+<project name="host-migration" default="run" basedir=".">
+    <description>HOST Migration — Migração MySQL (host) → MySQL (lc_sistemas)</description>
+
+    <!--
+        NÃO há dependência de Firebird neste projeto.
+        Apenas MySQL é necessário (driver mysql-connector-j-8.0.33.jar).
+    -->
+
+    <import file="nbproject/build-impl.xml"/>
+</project>

@@ -1,0 +1,13 @@
+build
+bin
+dist
+FIREBIRD
+*.class
+*.log
+*.err
+*.tmp
+*.zip
+*.rar
+*.7z
+node_modules
+.next

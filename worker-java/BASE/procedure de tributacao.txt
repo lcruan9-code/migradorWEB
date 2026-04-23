@@ -1,0 +1,87 @@
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS `NOVOGRUPOTRIB2` $$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `NOVOGRUPOTRIB2`(IN p_uf VARCHAR(2))
+BEGIN
+    DECLARE v_id_estado INT;
+
+    
+    SELECT id INTO v_id_estado
+    FROM lc_sistemas.estados
+    WHERE uf = p_uf;
+
+    
+    IF v_id_estado IS NULL THEN
+        SELECT CONCAT('UF "', p_uf, '" não encontrada na tabela de estados.');
+    ELSE
+        START TRANSACTION;
+
+
+        delete from lc_sistemas.grupotributacao where id > 1;
+        ALTER TABLE lc_sistemas.grupotributacao AUTO_INCREMENT = 1;
+
+        
+        UPDATE lc_sistemas.produto p
+        INNER JOIN lc_sistemas.ncm n ON n.id = p.id_ncm
+        SET p.trib_genero = SUBSTRING(n.codigo, 1, 2)
+        WHERE p.trib_genero = '';
+
+        
+        INSERT INTO lc_sistemas.grupotributacao (nome, id_estado, uf, id_ncm, id_cest, id_cfop, id_cfop_bonificacao, id_cfop_devolucao, id_cfop_transferencia, ncm, origem, genero, id_cst, icms_saida_aliquota, icms_saida_aliquota_red_base_calc, pis_saida,
+        cofins_saida, pis_saida_aliquota, cofins_saida_aliquota, ipi_cst, ipi_aliquota, ipi_ex, ipi_codigo_enquadramento, icms_fcp_aliquota, icms_observacao_fiscal, icms_difererimento_aliquota, icms_pode_desonerado, icms_motivo_desonerado,
+        icms_indic_deduz_desonerado, icms_codigo_beneficio_fiscal, pis_nri, cofins_nri, preco_cmv, imendes_codigo_grupo, imendes_codigo_regra, datahora_alteracao, ativo)
+        SELECT DISTINCT
+        CONCAT('NCM ', ncm.codigo,' CST ', cst.codigotributario, ' ICMS ', p.trib_icmsaliqsaida, ' RED BC ICMS ', p.trib_icmsaliqredbasecalcsaida, ' FCP ', p.trib_icmsfcpaliq, ' PIS ', trib_pissaida, ' ', p.trib_pisaliqsaida,' COFINS ', p.trib_cofinssaida, ' ', p.trib_cofinsaliqsaida, ' IPI ',  p.trib_ipisaida, ' ', p.trib_ipialiqsaida, ' GT: ', p.id_grupotributacao) AS nome,
+        v_id_estado, p_uf, p.id_ncm, p.id_cest, p.id_cfop, 414, 23, 311, ncm.codigo, p.origem_produto, p.trib_genero, p.id_cst, p.trib_icmsaliqsaida,
+        p.trib_icmsaliqredbasecalcsaida, p.trib_pissaida,
+        p.trib_cofinssaida, p.trib_pisaliqsaida, p.trib_cofinsaliqsaida, p.trib_ipisaida, p.trib_ipialiqsaida, '', 999, 0, '', 0, 'NAO', '', '', '', '', '', 0, '', '', now(), '1'
+        FROM lc_sistemas.produto p
+        INNER JOIN lc_sistemas.ncm on ncm.id = p.id_ncm
+        INNER JOIN lc_sistemas.empresa e ON e.id = p.id_empresa
+        INNER JOIN lc_sistemas.estados est ON est.id = e.id_estados
+        INNER JOIN lc_sistemas.cst ON cst.id = p.id_cst
+
+        GROUP BY
+        p.id_ncm, p.id_cfop, p.id_cst, p.trib_icmsaliqsaida, p.trib_icmsaliqredbasecalcsaida, p.trib_icmsfcpaliq, p.trib_pissaida, p.trib_pisaliqsaida, p.trib_cofinssaida,
+        p.trib_cofinsaliqsaida, p.trib_ipisaida, p.trib_ipialiqsaida;
+
+
+
+        CREATE TEMPORARY TABLE `TRIBUTACAO` (
+            `ID` INTEGER NOT NULL AUTO_INCREMENT,
+            `nome` VARCHAR(200),
+            `id_produto` INT(11),
+            PRIMARY KEY (`ID`)
+        );
+
+        
+        insert into `TRIBUTACAO`(nome, id_produto)
+        select CONCAT('NCM ', ncm.codigo,' CST ', c.codigotributario, ' ICMS ', p.trib_icmsaliqsaida, ' RED BC ICMS ', p.trib_icmsaliqredbasecalcsaida, ' FCP ', p.trib_icmsfcpaliq, ' PIS ', trib_pissaida, ' ', p.trib_pisaliqsaida,' COFINS ', p.trib_cofinssaida, ' ',  p.trib_cofinsaliqsaida, ' IPI ',  p.trib_ipisaida, ' ', p.trib_ipialiqsaida, ' GT: ', p.id_grupotributacao), p.id
+        from lc_sistemas.produto p
+        INNER JOIN lc_sistemas.ncm on ncm.id = p.id_ncm
+        inner join lc_sistemas.cst c on c.id = p.id_cst
+        inner join lc_sistemas.cfop cf on cf.id = p.id_cfop
+        order by p.id;
+
+        
+        UPDATE lc_sistemas.produto p
+        INNER JOIN `TRIBUTACAO` t ON t.id_produto = p.id
+        LEFT JOIN lc_sistemas.grupotributacao g ON g.nome = t.nome
+        SET p.id_grupotributacao = g.id;
+
+        
+        DROP TEMPORARY TABLE `TRIBUTACAO`;
+
+        COMMIT;
+
+
+         
+
+        
+        SELECT p.id  as `Produtos com Grupo_tributacao NULL` FROM lc_sistemas.produto p WHERE p.id_grupotributacao IS NULL;
+        
+
+    END IF;
+END $$
+
+DELIMITER ;

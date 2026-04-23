@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: migrador-worker
+    runtime: docker
+    plan: free
+    rootDir: worker-java
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8080
+
+  - type: web
+    name: migrador-portal
+    runtime: node
+    plan: free
+    rootDir: portal
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: WORKER_URL
+        fromService:
+          type: web
+          name: migrador-worker
+          envVarKey: RENDER_EXTERNAL_URL

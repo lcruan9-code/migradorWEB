@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash('/c/netbeans-28-bin/netbeans/extide/ant/bin/ant' -f . -Dnb.internal.action.name=rebuild clean jar)",
+      "Bash(ant clean *)",
+      "Bash(\"C:\\\\Program Files\\\\NetBeans-28\\\\netbeans\\\\java\\\\maven\\\\bin\\\\mvn\" --version)",
+      "Read(//c/ProgramData/**)",
+      "Bash(cmd /c \"where ant 2>nul || echo notfound\")",
+      "Bash(cmd /c \"C:\\\\netbeans-28-bin\\\\netbeans\\\\java\\\\ant\\\\bin\\\\ant.bat -f \\\\\"C:\\\\Users\\\\ruanp\\\\NETBENAS - COWORK\\\\migrador-web\\\\worker-java\\\\build.xml\\\\\" clean jar 2>&1\")",
+      "Bash(cmd /c \"dir \\\\\"C:\\\\Program Files\\\\NetBeans-28\\\\\" 2>&1 | head -20\")",
+      "Bash(cmd /c \"taskkill /F /IM java.exe 2>&1\")",
+      "Bash(grep -A5 \"^CREATE TABLE \\\\`unidade\\\\`\" \"C:\\\\Users\\\\ruanp\\\\NETBENAS - COWORK\\\\migrador-web\\\\worker-java\\\\src\\\\br\\\\com\\\\lcsistemas\\\\syspdv\\\\resource\\\\banco_novo.sql\")",
+      "Bash(grep -A5 \"^CREATE TABLE \\\\`categoria\\\\`\" \"C:\\\\Users\\\\ruanp\\\\NETBENAS - COWORK\\\\migrador-web\\\\worker-java\\\\src\\\\br\\\\com\\\\lcsistemas\\\\syspdv\\\\resource\\\\banco_novo.sql\")",
+      "Bash(grep -A5 \"^CREATE TABLE \\\\`cst\\\\`\" \"C:\\\\Users\\\\ruanp\\\\NETBENAS - COWORK\\\\migrador-web\\\\worker-java\\\\src\\\\br\\\\com\\\\lcsistemas\\\\syspdv\\\\resource\\\\banco_novo.sql\")",
+      "Bash(grep -o \"^CREATE TABLE \\\\`[a-zA-Z_0-9]*\\\\`\" \"C:\\\\Users\\\\ruanp\\\\NETBENAS - COWORK\\\\migrador-web\\\\worker-java\\\\src\\\\br\\\\com\\\\lcsistemas\\\\syspdv\\\\resource\\\\banco_novo.sql\")",
+      "Bash(cmd /c \"python --version 2>&1\")",
+      "Bash(awk '/^CREATE TABLE/{in_ct=1; next} /^\\\\\\) ENGINE/{in_ct=0} in_ct && /;/{print NR\": \"$0}' 'C:\\\\Users\\\\ruanp\\\\NETBENAS - COWORK\\\\migrador-web\\\\worker-java\\\\src\\\\br\\\\com\\\\lcsistemas\\\\syspdv\\\\resource\\\\banco_novo.sql')",
+      "Bash(awk -F: '{print $1, $2}')",
+      "Bash(awk 'NR<=10 || \\(NR>=50 && NR<=60\\)')",
+      "Bash(awk '/^CREATE TABLE/{tbl=$0} /longtext|mediumtext|tinytext/{print tbl}' 'C:\\\\Users\\\\ruanp\\\\NETBENAS - COWORK\\\\migrador-web\\\\worker-java\\\\src\\\\br\\\\com\\\\lcsistemas\\\\syspdv\\\\resource\\\\banco_novo.sql')",
+      "Bash(unzip -l \"C:\\\\Users\\\\ruanp\\\\NETBENAS - COWORK\\\\migrador-web\\\\worker-java\\\\dist\\\\host-migration.jar\")",
+      "Bash(build_and_run.bat)",
+      "Bash(cmd.exe /c build_and_run.bat)",
+      "Bash(\"C:\\\\Program Files\\\\Java\\\\jdk-17\\\\bin\\\\jar.exe\" cf dist/host-migration.jar -C src .)"
+    ]
+  }
+}

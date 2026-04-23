@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Main-Class: br.com.lcsistemas.gdoor.Main
+X-COMMENT: LC Sistemas - GDOOR Migration Engine v1.0
+

@@ -1,0 +1,346 @@
+alter table gdoor.estoque
+add column id_fornecedor int(11);
+alter table gdoor.estoque
+add column id_cst int(11);
+alter table gdoor.estoque
+add column id_cfop int(11);
+alter table gdoor.estoque
+add column id_unidade int(11);
+alter table gdoor.estoque
+add column id_ncms int(11);
+alter table gdoor.estoque
+add column id_cest int(11);
+alter table gdoor.estoque
+add column id_categoria int(11);
+
+
+-- -------------------------------------------
+
+CREATE INDEX idx_estoque_cod_ncm ON gdoor.estoque (cod_ncm);
+CREATE INDEX idx_estoque_fornecedor ON gdoor.estoque (fornecedor);
+CREATE INDEX idx_estoque_und ON gdoor.estoque (und);
+CREATE INDEX idx_estoque_cod_cest ON gdoor.estoque (cod_cest);
+CREATE INDEX idx_estoque_grupo ON gdoor.estoque (grupo);
+CREATE INDEX idx_estoque_st ON gdoor.estoque (st);
+CREATE INDEX idx_estoque_codigo ON gdoor.estoque (codigo);
+CREATE INDEX idx_estoque_barras ON gdoor.estoque (barras);
+CREATE INDEX idx_estoque_razao_social ON gdoor.estoque (razao_social);
+CREATE INDEX idx_ncm_codigo ON lc_sistemas.ncm (codigo);
+CREATE INDEX idx_fornecedor_cidade ON gdoor.fornecedor (cidade);
+CREATE INDEX idx_fornecedor_uf ON gdoor.fornecedor (uf);
+CREATE INDEX idx_fornecedor_nome ON gdoor.fornecedor (nome);
+CREATE INDEX idx_fornecedor_fantasia ON gdoor.fornecedor (fantasia);
+CREATE INDEX idx_fornecedor_cnpj_cnpf ON gdoor.fornecedor (cnpj_cnpf);
+CREATE INDEX idx_fornecedor_codigo ON gdoor.fornecedor (codigo);
+CREATE INDEX idx_cidades_nome ON lc_sistemas.cidades (nome);
+CREATE INDEX idx_cidades_iduf ON lc_sistemas.cidades (iduf);
+CREATE INDEX idx_cidades_codigocidade ON lc_sistemas.cidades (codigocidade);
+CREATE INDEX idx_estados_uf ON lc_sistemas.estados (uf);
+CREATE INDEX idx_estados_iduf ON lc_sistemas.estados (iduf);
+CREATE INDEX idx_unidade_descricao ON lc_sistemas.unidade (descricao);
+CREATE INDEX idx_cest_codigo ON gdoor.cest (codigo);
+CREATE INDEX idx_cest_id ON gdoor.cest (id);
+CREATE INDEX idx_lc_cest_cest ON lc_sistemas.cest (cest);
+CREATE INDEX idx_categoria_nome ON lc_sistemas.categoria (nome);
+CREATE INDEX idx_cst_codigotributario ON lc_sistemas.cst (codigotributario);
+CREATE INDEX idx_cst_tabela ON lc_sistemas.cst (tabela);
+CREATE INDEX idx_cliente_cidade ON gdoor.cliente (cidade);
+CREATE INDEX idx_cliente_uf ON gdoor.cliente (uf);
+CREATE INDEX idx_cliente_nome ON gdoor.cliente (nome);
+CREATE INDEX idx_cliente_fantasia ON gdoor.cliente (fantasia);
+CREATE INDEX idx_cliente_cnpj_cnpf ON gdoor.cliente (cnpj_cnpf);
+CREATE INDEX idx_cliente_codigo ON gdoor.cliente (codigo);
+CREATE INDEX idx_pagar_cod_fornecedor ON gdoor.pagar (cod_fornecedor);
+CREATE INDEX idx_receber_cod_cliente ON gdoor.receber (cod_cliente);
+
+-- ----------------------------------------------
+
+SELECT cod_ncm FROM gdoor.estoque group by cod_ncm;
+select * from lc_sistemas.ncm;
+delete from lc_sistemas.ncm where id > 1;
+alter table lc_sistemas.ncm auto_increment = 1;
+
+insert into lc_sistemas.ncm(codigo, ex, descricao, aliquota_nacional, aliquota_internacional, aliquota_estadual, aliquota_municipal, vigenciainicio, vigenciafim, chave, versao, ativo)
+select cod_ncm, '', '', 0.000, 0.000, 0.000, 0.000, null, null, '', '', 1 from gdoor.estoque
+where length(cod_ncm)= 8 and cod_ncm > 0 group by cod_ncm;
+
+update gdoor.estoque e
+inner join lc_sistemas.ncm n on e.cod_ncm = n.codigo
+set e.id_ncms = n.id;
+
+-- -------------------------------------------
+
+select c.id,c.nome,e.id,e.uf from lc_sistemas.cidades c, lc_sistemas.estados e where c.nome='IRARA' and e.uf='BA' and e.iduf=c.iduf; -- 237 / 14
+
+SELECT * FROM gdoor.fornecedor r;
+SELECT telefone, celular FROM gdoor.fornecedor r;
+select fone from lc_sistemas.fornecedor;
+delete from lc_sistemas.fornecedor where id > 2;
+alter table lc_sistemas.fornecedor auto_increment = 2;
+
+update gdoor.fornecedor
+set telefone = replace(telefone, '(0xx', '(');
+
+update lc_sistemas.fornecedor
+set fone = replace(fone, '(XX)9-', '');
+
+update lc_sistemas.fornecedor
+set fone =
+replace(
+replace(
+replace(
+fone,
+'(XX)9-', ''),
+'XX',''),
+'775','75');
+
+
+-- ATENÇÃO NO "default"
+alter table gdoor.fornecedor
+add column id_cidade int(11)DEFAULT 1937, -- ID_CIDADE padrao
+add column id_estado int(11)DEFAULT 5; -- ID_ESTADO padrao
+
+update gdoor.fornecedor f
+inner join lc_sistemas.cidades c on c.nome = f.cidade
+inner join lc_sistemas.estados e on e.uf = f.uf
+set f.id_cidade = c.id, f.id_estado = e.id
+where c.iduf = e.iduf;
+
+insert into lc_sistemas.fornecedor(nome, razao_social, cnpj_cpf, ie, endereco, numero, bairro, cep, fone, obs, id_cidade, id_estado, id_empresa)
+select If(fantasia='',nome,if(fantasia is null,nome,fantasia)), if(length(cnpj_cnpf)=18,nome,''), cnpj_cnpf, ie_rg, UPPER(endereco), numero, UPPER(bairro), cep, telefone, concat('TELEFONE: ', ifnull(telefone,''),'\nCELULAR: ', ifnull(celular,''),'\nFAX: ', ifnull(fax,'')), id_cidade, id_estado, 1 from gdoor.fornecedor
+where length(nome)>=1 ;
+
+update gdoor.estoque e
+inner join lc_sistemas.fornecedor f on e.fornecedor = f.razao_social
+set e.id_fornecedor = f.id;
+
+-- -------------------------------------------
+
+SELECT und FROM gdoor.estoque e group by und;
+select * from lc_sistemas.unidade;
+delete from lc_sistemas.unidade where id > 36;
+alter table lc_sistemas.unidade auto_increment = 1;
+
+-- CORREÇÃO
+UPDATE gdoor.estoque SET und = trim(und), und = 'UN' WHERE und IN('1','789', '1UN', '.', '%', '', ',00', 'UNI', '210',',un','UD','UN');
+
+insert into lc_sistemas.unidade(descricao, nome, fator_conversao, datahora_alteracao, ativo)
+select und, '', 1.000, NOW(), 1 from gdoor.estoque
+where length(und)>=1 and und not in(select descricao from lc_sistemas.unidade)group by und;
+
+update gdoor.estoque e
+inner join lc_sistemas.unidade u on e.und = u.descricao
+set e.id_unidade = u.id;
+
+-- -------------------------------------------
+
+SELECT cod_cest FROM gdoor.estoque e group by cod_cest;
+SELECT * FROM gdoor.cest c;
+select * from lc_sistemas.cest;
+delete from lc_sistemas.cest where id > 1;
+alter table lc_sistemas.cest auto_increment = 1;
+
+insert into lc_sistemas.cest(cest, ncm, descricao)
+select c.codigo, '00000000', '' from gdoor.cest c
+inner join gdoor.estoque e on e.cod_cest = c.id
+where length(c.codigo)=7 and c.codigo>0 group by c.codigo;
+
+update gdoor.estoque e
+inner join gdoor.cest c on c.id = e.cod_cest
+inner join lc_sistemas.cest cc on cc.cest = c.codigo
+set e.id_cest = cc.id;
+
+-- -------------------------------------------
+
+SELECT * FROM gdoor.estoque e;
+SELECT grupo FROM gdoor.estoque group by grupo;
+select * from lc_sistemas.categoria;
+delete from lc_sistemas.categoria where id > 1;
+alter table lc_sistemas.categoria auto_increment = 1;
+
+insert into lc_sistemas.categoria(nome, comissao, pode_gourmet, datahora_alteracao, ativo)
+select upper(grupo), 0.000, 'SIM', now(), 1 from gdoor.estoque
+where length(grupo)>=1 and grupo not in('Geral','Diversos','padrao') group by grupo;
+
+update gdoor.estoque e
+inner join lc_sistemas.categoria c on c.nome = e.grupo
+set e.id_categoria = c.id;
+
+-- -------------------------------------------
+
+SELECT st, id_cst, id_cfop FROM gdoor.estoque group by st;
+select * from lc_sistemas.cst;
+
+update gdoor.estoque e
+inner join lc_sistemas.cst c on c.codigotributario = (if(trim(e.st) not in(select codigotributario from lc_sistemas.cst),'00',if(trim(e.st)=400,'41',if(trim(e.st)=500,'60',if(trim(e.st)=102,'00',trim(e.st))))))
+set
+e.id_cst = c.id,
+id_cfop = CASE st WHEN 60 THEN '355' WHEN 500 THEN '355' ELSE '289' END
+where c.tabela = 'A'; -- NORMAL
+
+update gdoor.estoque e
+inner join lc_sistemas.cst c on c.codigotributario = if(trim(e.st) not in(select codigotributario from lc_sistemas.cst),'102',if(trim(e.st) in(0,10),'102',if(trim(e.st)=20,'102',if(trim(e.st) in(40,50,51),'300',if(trim(e.st)=60,'500',if(trim(e.st)=90,'900',trim(e.st)))))))
+set
+e.id_cst = c.id,
+id_cfop = CASE st WHEN 60 THEN '355' WHEN 500 THEN '355' ELSE '289' END
+where c.tabela = 'B'; -- SIMPLES
+
+-- -------------------------------------------
+
+SELECT codigo, barras, descricao, SUBSTR(barras, LENGTH(barras)-3, 6) AS teste FROM gdoor.estoque where length(barras)=7 order by SUBSTR(barras, LENGTH(barras)-3, 6); ## BALANCA
+SELECT descricao, CONCAT(if(caracteristicas is null,'',caracteristicas), if(cor='','',if(cor is null,'',concat(' - ',cor))), if(tamanho is null,'',concat(' - ',tamanho))), tamanho FROM gdoor.estoque order by descricao;
+select * from lc_sistemas.produto;
+delete from lc_sistemas.produto;
+alter table lc_sistemas.produto auto_increment = 100000;
+
+--  CORREÇÃO ESTOQUE
+update gdoor.estoque set qtd = 0 where qtd > 1000000;
+
+insert into lc_sistemas.produto(trib_genero, ativo, codigo, pode_balanca, pode_fracionado, referencia, datahora_cadastro, datahora_alteracao, codigo_barras, nome, descricao, estoque, custo_medio, preco_custo, preco_venda, preco_venda2, trib_pissaida, trib_cofinssaida, id_fornecedor, id_cst, id_cfop, id_unidade, id_ncm, id_cest, id_categoria, comb_cprodanp, id_empresa)
+select substr(cod_ncm, 1, 2), IF(situacao='ATIVO',1,0), if(barras like '2000%',SUBSTR(barras, LENGTH(barras)-3, 6),codigo), if(length(barras)=7,'S','N'), if(length(barras)=7,'S','N'), if(length(barras)>14,barras,cod_fabricante), IF(data_cadastro is null, NOW(), concat(date(data_cadastro), " ", time(now()))), now(), if(length(barras)>14,'',barras), descricao, CONCAT(if(caracteristicas is null,'',caracteristicas), if(cor='','',if(cor is null,'',concat(' - ',cor))), if(tamanho is null,'',concat(' - ',tamanho))), if(qtd > 1000000.0,0.0,if(qtd < -1000000.0,0.0,qtd)), custo_medio, if(preco_custo > 1000000.0,0.0,preco_custo), preco_venda, preco_atacado, pis_codigo, cofins_codigo, id_fornecedor, id_cst, id_cfop, id_unidade, id_ncms, id_cest, id_categoria, cod_anp, 1 FROM gdoor.estoque
+where length(descricao)>=1;
+
+-- AJUSTES
+update lc_sistemas.produto set codigo_barras = '' where codigo_barras like '200%';
+update lc_sistemas.produto set trib_cofinssaida = trib_pissaida;
+
+-- -------------------------------------------
+
+select c.id,c.nome,e.id,e.uf from lc_sistemas.cidades c, lc_sistemas.estados e where c.nome='IRARA' and e.uf='BA' and e.iduf=c.iduf; -- 237 / 14
+
+SELECT * FROM gdoor.cliente r order by codigo;
+select * from lc_sistemas.cliente;
+delete from lc_sistemas.cliente where id > 2;
+alter table lc_sistemas.cliente auto_increment = 1;
+
+-- ATENÇÃO NO "default"
+alter table gdoor.cliente
+add column id_cidade int(11)DEFAULT 1943, -- ID_CIDADE padrao
+add column id_estado int(11)DEFAULT 5; -- ID_ESTADO padrao
+
+update gdoor.cliente f
+inner join lc_sistemas.cidades c on c.nome = f.cidade
+inner join lc_sistemas.estados e on e.uf = f.uf
+set f.id_cidade = c.id, f.id_estado = e.id
+where c.iduf = e.iduf;
+
+##AJUSTE DE TELEFONES
+
+SELECT TELEFONE, CELULAR FROM gdoor.cliente r order by codigo;
+update gdoor.cliente
+set TELEFONE =
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+TELEFONE,
+'(XX)9-', ''),
+'XX',''),
+'775','75'),
+'XX ',''),
+'xx ',''),
+'0xx ',''),
+'0xx00 ',''),
+'0xx75','75'),
+'0xx00',''),
+'0xx','')
+;
+update gdoor.cliente
+set CELULAR =
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+replace(
+CELULAR,
+'(XX)9-', ''),
+'XX',''),
+'775','75'),
+'XX ',''),
+'xx ',''),
+'0xx ',''),
+'0xx00 ',''),
+'0xx75','75'),
+'0xx00',''),
+'0xx','')
+;
+
+-- CORRECAO
+update gdoor.cliente set nome = (if(length(trim(nome))>=1,nome,fantasia));
+
+SELECT mysql.formatar_telefone();
+
+insert into lc_sistemas.cliente(numero_cartao, ativo, id_clientecanal, nome, razao_social, apelido_adi, cpf_cnpj, ie, rg, im, endereco, numero, referencia, bairro, cep, telefone, tel_comercial, obs, email_adi, limite_credito, id_cidade, id_cidade2, id_estado, id_estado2, id_pais, id_empresa)
+select codigo, IF(situacao = 'Ativo', 1, 0), 0, nome, IF(length(cnpj_cnpf)>=18,nome,''), IF(LENGTH(contato)>20,SUBSTR(contato,1,20),contato), cnpj_cnpf, if(length(cnpj_cnpf) > 14, ie_rg, ''), if(length(cnpj_cnpf) = 14, ie_rg, ''), im, upper(endereco), numero, upper(complemento), upper(bairro), cep, mysql.formatar_telefone(telefone,75), mysql.formatar_telefone(celular,75), concat('TELEFONE: ', ifnull(telefone,''),'\nCELULAR: ', ifnull(celular,''),'\nFAX: ', ifnull(fax,'')), email, limite_credito, id_cidade, id_cidade, id_estado, id_estado, 34, 1 from gdoor.cliente
+where codigo > 0
+and length(nome)>=1 and codigo > 0;
+
+-- -------------------------------------------
+
+SELECT * FROM gdoor.pagar where pagamento is null;
+select * from lc_sistemas.pagar;
+delete from lc_sistemas.pagar;
+alter table lc_sistemas.pagar auto_increment = 1;
+
+alter table gdoor.pagar add column id_fornecedor int(11);
+
+update gdoor.pagar p
+inner join gdoor.fornecedor f on f.codigo = p.cod_fornecedor
+inner join lc_sistemas.fornecedor ff on ff.nome = (If(f.fantasia='',f.nome,if(f.fantasia is null,f.nome,f.fantasia)))
+set p.id_fornecedor = ff.id;
+
+-- ANALISAR
+select * from gdoor.pagar where pagamento is null and id_fornecedor is null;
+
+INSERT INTO lc_sistemas.pagar (id_usuario, id_empresa, id_pagamento, id_planocontas, id_fornecedor, id_contamovimento, tipo, status, documento, numero_nf, lancamento, emissao, vencimento, parcela, valor_original, valor, valor_desc, valor_pag, data_pag, juros_pag, multa_pag, multa, juros, agencia, conta, conciliado, numero_cheque, numero_boleto, historico, valor_arec, obs)
+SELECT 1, 1, 46, 108, id_fornecedor, 1, 'FP', 'CA', documento, null, date(emissao), concat(date(emissao), ' 00:00:00'), vencimento, '1/1', valor_dup, valor_dup, '0.000', '0.000', null, '0.000', '0.000', '0.000', '0.000', '', '', null, '', '', historico, '0.000', concat("MIGRACAO GDOOR:  ", NOW()) FROM gdoor.pagar
+where pagamento is null
+and id_fornecedor is not null;
+
+-- -------------------------------------------
+
+SELECT * FROM gdoor.receber
+r WHERE r.valor_rec < r.valor_dup;
+select * from lc_sistemas.receber;
+delete from lc_sistemas.receber;
+alter table lc_sistemas.receber auto_increment = 1;
+
+alter table gdoor.receber add column id_cliente int(11);
+
+update gdoor.receber r
+inner join gdoor.cliente c on c.codigo = r.cod_cliente
+inner join lc_sistemas.cliente cc on cc.nome = c.nome
+set r.id_cliente = cc.id;
+
+-- ANALISAR
+SELECT * FROM gdoor.receber r WHERE r.valor_rec < r.valor_dup AND id_cliente is null;
+
+-- CORRIGIR VALORES
+update gdoor.receber set valor_dup = valor_dup - (valor_rec + valor_des);
+--
+delete from gdoor.receber where valor_dup <= 0;
+-- FIM
+
+insert into lc_sistemas.receber(id_cliente, id_empresa, id_usuario, id_cobrador, id_vendedor, id_operador, id_pagamento, id_planocontas, id_contamovimento, id_convenio, tipo, status, documento, n_documento, lancamento, emissao, vencimento, parcela, valor_original, valor_rec, data_rec, juros_rec, multa_rec, retencao_rec, valor_arec, valor_desconto, agencia, conta, conciliado, numero_cheque, numero_boleto, historico, obs)
+select id_cliente, 1, 1, 1, 1, 1, 6, 29, 1, 1, "FD", "CA", "00", documento, date(r.emissao), concat(date(r.emissao),' ',time(now())), date(vencimento), '1/1', valor_dup, 0.000, null, 0.000, 0.000, 0.000, 0.000, 0.000, '', '', '', '', '', historico, concat("MIGRACAO GDOOR: ", now()) FROM  gdoor.receber r
+WHERE r.valor_dup > 0.0
+AND r.id_cliente is not null;
+
+-- -------------------------------------------------
+-- -------------------------------------------------
+-- -------------------------------------------
+-- -------------------------------------------------
+-- ----------// TRIBUTAÇÃO SIMPLES //---------
+-- -------------------------------------------------
+CALL mysql.NOVOGRUPOTRIB('BA');

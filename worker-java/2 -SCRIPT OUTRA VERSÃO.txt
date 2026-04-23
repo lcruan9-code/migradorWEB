@@ -1,0 +1,110 @@
+-- -------------------------------------------
+
+SELECT marca FROM host.produtos group by marca;
+SELECT * FROM host.marcas;
+select * from lc_sistemas.fabricante;
+delete from lc_sistemas.fabricante where id > 1;
+alter table lc_sistemas.fabricante auto_increment = 1;
+
+ALTER TABLE host.produtos ADD COLUMN id_fabricante INT(11);
+
+insert into lc_sistemas.fabricante(nome, datahora_alteracao, ativo)
+select marca, now(), 1 from host.produtos
+where length(trim(marca))>=1 group by marca;
+
+update host.produtos p
+inner join lc_sistemas.fabricante f on p.marca = f.nome
+set p.id_fabricante = f.id;
+-- -------------------------------------------
+
+select unidade from host.produtos group by unidade ;
+select * from lc_sistemas.unidade;
+delete from lc_sistemas.unidade where id > 36;
+alter table lc_sistemas.unidade auto_increment = 1;
+
+ALTER TABLE host.produtos ADD COLUMN id_unidade INT(11);
+
+insert into lc_sistemas.unidade(descricao, nome, fator_conversao, datahora_alteracao, ativo)
+select unidade, '', 1.000, now(), 1 from host.produtos
+where length(trim(unidade))>=1 and unidade not in(select descricao from lc_sistemas.unidade)group by unidade;
+
+update host.produtos e
+inner join lc_sistemas.unidade u on e.unidade = u.descricao
+set e.id_unidade = u.id;
+
+-- -------------------------------------------
+
+SELECT grupo FROM host.produtos group by grupo;
+SELECT * FROM host.grupos g;
+select * from lc_sistemas.categoria;
+delete from lc_sistemas.categoria where id > 1;
+alter table lc_sistemas.categoria auto_increment = 1;
+
+ALTER TABLE host.produtos ADD COLUMN id_categoria INT(11);
+
+insert into lc_sistemas.categoria(nome, comissao, pode_gourmet, datahora_alteracao, ativo)
+select nome_grupo, 0.000, 'SIM', now(), 1 from host.grupos
+where length(trim(nome_grupo))>=1 group by nome_grupo;
+
+update host.produtos p
+inner join host.grupos g on p.grupo = g.grupo
+inner join lc_sistemas.categoria c on g.nome_grupo = c.nome
+set p.id_categoria = c.id;
+
+-- -------------------------------------------
+
+SELECT situacao_tributaria, id_cst, id_cfop FROM host.produtos group by situacao_tributaria;
+select * from lc_sistemas.cfop;
+select * from lc_sistemas.cst;
+
+alter table host.produtos
+add column id_cst int(11),
+add column id_cfop int(11);
+
+update host.produtos e
+inner join lc_sistemas.cst c on c.codigotributario = if(trim(e.situacao_tributaria) not in(select codigotributario from lc_sistemas.cst),'102',if(trim(e.situacao_tributaria) in(0,10),'102',if(trim(e.situacao_tributaria)=20,'102',if(trim(e.situacao_tributaria) in(40,50,51),'300',if(trim(e.situacao_tributaria)=60,'500',if(trim(e.situacao_tributaria)=90,'900',trim(e.situacao_tributaria)))))))
+set
+e.id_cst = c.id,
+id_cfop = CASE situacao_tributaria WHEN 60 THEN '355' WHEN 500 THEN '355' ELSE '289' END
+where c.tabela = 'B'; -- SIMPLES
+
+-- -------------------------------------------
+
+SELECT codigoncm FROM host.produtos group by codigoncm;
+select * from lc_sistemas.ncm;
+delete from lc_sistemas.ncm where id > 1;
+alter table lc_sistemas.ncm auto_increment = 1;
+
+ALTER TABLE host.produtos ADD COLUMN id_ncm INT(11);
+
+
+insert into lc_sistemas.ncm(codigo, ex, descricao, aliquota_nacional, aliquota_internacional, aliquota_estadual, aliquota_municipal, vigenciainicio, vigenciafim, chave, versao, ativo)
+select codigoncm, '', '', 0.000, 0.000, 0.000, 0.000, null, null, '', '',  1 from host.produtos
+where length(codigoncm) = 8 and codigoncm > 0 group by codigoncm;
+
+update host.produtos p
+inner join lc_sistemas.ncm n on p.codigoncm = n.codigo
+set p.id_ncm = n.id;
+
+-- -------------------------------------------
+SELECT * FROM host.inventario i;
+
+SELECT * FROM host.produtos;
+select * from lc_sistemas.produto;
+delete from lc_sistemas.produto;
+alter table lc_sistemas.produto auto_increment = 100000;
+
+insert into lc_sistemas.produto(codigo, nome, descricao, preco_venda, estoque, codigo_barras, trib_pissaida, trib_cofinssaida, id_ncm, id_fabricante, id_unidade, id_categoria, id_cst, id_cfop, id_empresa)
+select codigo, descricao, descricaonf, prvenda, estoque, codigo_barra, pis, cofins, id_ncm, id_fabricante, id_unidade, id_categoria, id_cst, id_cfop, 1
+from host.produtos
+where length(trim(descricao))>=1;
+
+-- CORREÇÃO DE CODIGOS
+UPDATE lc_sistemas.produto set referencia='' where (trim(leading 0 from codigo_barras)) = (trim(leading 0 from referencia));
+UPDATE lc_sistemas.produto set codigo_barras='' where (trim(leading 0 from codigo_barras)) = (trim(leading 0 from codigo));
+UPDATE lc_sistemas.produto set referencia='' where (trim(leading 0 from referencia)) = (trim(leading 0 from codigo));
+
+-- ----------------------------------------------------
+
+CALL mysql.NOVOGRUPOTRIB('AP');
+select * from lc_sistemas.grupotributacao;
