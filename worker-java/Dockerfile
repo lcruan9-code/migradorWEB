@@ -3,13 +3,17 @@ FROM eclipse-temurin:17-jdk-jammy AS build
 WORKDIR /app
 
 COPY lib ./lib
-COPY src ./src
+COPY src/br/com/lcsistemas/syspdv ./src/br/com/lcsistemas/syspdv
 
 RUN set -eux; \
-    find src -name '*.java' > sources.txt; \
+    find src/br/com/lcsistemas/syspdv -name '*.java' > sources.txt; \
     mkdir -p out; \
     javac -encoding UTF-8 -cp "lib/*" -d out @sources.txt; \
-    cp -R src/. out/
+    mkdir -p out/br/com/lcsistemas/syspdv/resource; \
+    mkdir -p out/br/com/lcsistemas/syspdv/sql; \
+    cp src/br/com/lcsistemas/syspdv/resource/banco_novo.sql out/br/com/lcsistemas/syspdv/resource/; \
+    cp src/br/com/lcsistemas/syspdv/sql/cidades.csv out/br/com/lcsistemas/syspdv/sql/; \
+    cp src/br/com/lcsistemas/syspdv/sql/reference_data.json out/br/com/lcsistemas/syspdv/sql/
 
 FROM eclipse-temurin:17-jre-jammy
 
