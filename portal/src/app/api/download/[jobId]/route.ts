@@ -3,7 +3,7 @@ import { getWorkerUrl } from '@/lib/worker';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   const { jobId } = await params;
 

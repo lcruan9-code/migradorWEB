@@ -3,10 +3,11 @@ import { getWorkerUrl } from "@/lib/worker";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
-    const response = await fetch(`${getWorkerUrl()}/api/status/${params.jobId}`);
+    const { jobId } = await params;
+    const response = await fetch(`${getWorkerUrl()}/api/status/${jobId}`);
     const text = await response.text();
     return new NextResponse(text, {
       status: response.status,
