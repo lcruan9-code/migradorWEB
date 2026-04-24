@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -117,25 +118,28 @@ public class AppWorker {
             try {
                 String contentType = ex.getRequestHeaders().getFirst("Content-Type");
                 String boundary    = extractBoundary(contentType);
-                byte[] body        = ex.getRequestBody().readAllBytes();
 
-                MultipartData data = parseMultipart(body, boundary);
-                String sistema     = data.sistema != null ? data.sistema : "syspdv";
-                String filename    = data.filename != null ? data.filename : "banco.fdb";
+                // Cria workdir antes do parse para que o streaming grave direto nele.
+                // No Linux/Docker: /app/fdb-work (chmod 777) — acessível pelo Firebird user.
+                // No Windows: temp padrão do sistema.
+                java.nio.file.Path workBase = resolverWorkDir();
+                Path tmpDir = Files.createTempDirectory(workBase, "migrador-");
+                tmpDir.toFile().setReadable(true, false);
+                tmpDir.toFile().setExecutable(true, false);
 
-                if (data.fileBytes == null || data.fileBytes.length == 0) {
+                // Streaming multipart: grava o .fdb direto em disco — sem readAllBytes() em memória.
+                MultipartData data = parseMultipartStreaming(ex.getRequestBody(), boundary, tmpDir);
+                String sistema  = data.sistema  != null ? data.sistema  : "syspdv";
+                String filename = data.filename != null ? data.filename : "banco.fdb";
+
+                if (data.fileStreamPath == null) {
                     respond(ex, 400, err("Arquivo não recebido")); return;
                 }
 
-                // Salva o arquivo enviado em diretório acessível pelo processo do Firebird.
-                // No Linux/Docker o Firebird roda como user 'firebird'; /app/fdb-work tem chmod 777.
-                // No Windows usa o temp padrão do sistema.
-                java.nio.file.Path workBase = resolverWorkDir();
-                Path tmpDir      = Files.createTempDirectory(workBase, "migrador-");
-                tmpDir.toFile().setReadable(true, false);
-                tmpDir.toFile().setExecutable(true, false);
-                Path uploadPath  = tmpDir.resolve(filename);
-                Files.write(uploadPath, data.fileBytes);
+                Path uploadPath = java.nio.file.Paths.get(data.fileStreamPath);
+                if (!Files.exists(uploadPath) || Files.size(uploadPath) == 0) {
+                    respond(ex, 400, err("Arquivo vazio ou não recebido")); return;
+                }
                 uploadPath.toFile().setReadable(true, false);
 
                 String jobId = UUID.randomUUID().toString();
@@ -487,90 +491,170 @@ public class AppWorker {
     }
 
     // =========================================================================
-    //  Multipart parser mínimo
+    //  Multipart streaming parser — grava o arquivo direto em disco (sem OOM)
     // =========================================================================
 
     static class MultipartData {
         String sistema;
         String filename;
-        byte[] fileBytes;
+        String fileStreamPath; // caminho do arquivo gravado em disco pelo streaming parser
         String uf;
         String cidade;
         String regime;
     }
 
-    static MultipartData parseMultipart(byte[] body, String boundary) throws IOException {
+    /**
+     * Faz o parse do multipart sem carregar o arquivo na memória RAM.
+     * Campos de texto são bufferizados (pequenos). O campo "arquivo" é gravado
+     * diretamente em outDir usando um ring-buffer de tamanho do delimitador.
+     */
+    static MultipartData parseMultipartStreaming(InputStream httpBody, String boundary, Path outDir)
+            throws IOException {
         MultipartData result = new MultipartData();
-        byte[] boundaryBytes = ("--" + boundary).getBytes(StandardCharsets.ISO_8859_1);
-        byte[] crlf          = "\r\n".getBytes(StandardCharsets.ISO_8859_1);
+        // Delimitador entre partes: \r\n--boundary
+        byte[] delim = ("\r\n--" + boundary).getBytes(StandardCharsets.ISO_8859_1);
+        BufferedInputStream in = new BufferedInputStream(httpBody, 65536);
 
-        List<byte[]> parts = splitParts(body, boundaryBytes);
-        for (byte[] part : parts) {
-            // Separa header do conteúdo (header termina em \r\n\r\n)
-            int headerEnd = indexOf(part, new byte[]{'\r','\n','\r','\n'}, 0);
-            if (headerEnd < 0) continue;
+        // Pula a linha de abertura: --boundary\r\n
+        skipLn(in);
 
-            String header  = new String(part, 0, headerEnd, StandardCharsets.ISO_8859_1);
-            byte[] content = subArray(part, headerEnd + 4, part.length);
+        while (true) {
+            Map<String, String> hdrs = readHdrs(in);
+            if (hdrs == null || hdrs.isEmpty()) break;
 
-            // Remove CRLF final se presente
-            if (content.length >= 2 &&
-                content[content.length - 2] == '\r' && content[content.length - 1] == '\n') {
-                content = subArray(content, 0, content.length - 2);
-            }
+            String disp  = hdrs.getOrDefault("content-disposition", "");
+            String name  = dispParam(disp, "name");
+            String fname = dispParam(disp, "filename");
+            boolean isFile = (fname != null && !fname.isEmpty());
 
-            if (header.contains("name=\"sistema\"")) {
-                result.sistema = new String(content, StandardCharsets.UTF_8).trim();
-            } else if (header.contains("name=\"uf\"")) {
-                result.uf = new String(content, StandardCharsets.UTF_8).trim();
-            } else if (header.contains("name=\"cidade\"")) {
-                result.cidade = new String(content, StandardCharsets.UTF_8).trim();
-            } else if (header.contains("name=\"regime\"")) {
-                result.regime = new String(content, StandardCharsets.UTF_8).trim();
-            } else if (header.contains("name=\"arquivo\"")) {
-                // Extrai filename=
-                String fn = "";
-                int fi = header.indexOf("filename=\"");
-                if (fi >= 0) {
-                    int fe = header.indexOf("\"", fi + 10);
-                    fn = header.substring(fi + 10, fe);
+            if (isFile) {
+                // Grava diretamente em disco — zero alocação do arquivo em heap
+                if (result.filename == null) result.filename = fname;
+                String safeName = fname.replaceAll("[^\\w.\\-]", "_");
+                if (safeName.isEmpty()) safeName = "upload.fdb";
+                Path dest = outDir.resolve(safeName);
+                try (OutputStream fos = new FileOutputStream(dest.toFile())) {
+                    boolean more = copyTillDelim(in, delim, fos);
+                    result.fileStreamPath = dest.toAbsolutePath().toString();
+                    if (!more) break;
                 }
-                result.filename  = fn.isEmpty() ? "banco.fdb" : fn;
-                result.fileBytes = content;
+            } else {
+                // Campo de texto: bufferiza em memória (normalmente < 1 KB)
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(256);
+                boolean more = copyTillDelim(in, delim, baos);
+                String value = baos.toString("UTF-8").trim();
+                if (name != null) {
+                    switch (name) {
+                        case "sistema": result.sistema = value; break;
+                        case "uf":      result.uf      = value; break;
+                        case "cidade":  result.cidade  = value; break;
+                        case "regime":  result.regime  = value; break;
+                    }
+                }
+                if (!more) break;
             }
+
+            // Após o delimitador lê 2 bytes: \r\n = mais partes, -- = final
+            int b1 = in.read();
+            int b2 = in.read();
+            if (b1 == '-' && b2 == '-') break;
+            // \r\n → continua para a próxima parte
         }
+
         return result;
     }
 
-    private static List<byte[]> splitParts(byte[] data, byte[] delimiter) {
-        List<byte[]> parts = new ArrayList<>();
-        int start = 0;
-        while (start < data.length) {
-            int pos = indexOf(data, delimiter, start);
-            if (pos < 0) break;
-            if (pos > start) parts.add(subArray(data, start, pos));
-            start = pos + delimiter.length;
-            // Pula \r\n após o delimiter
-            if (start < data.length - 1 && data[start] == '\r' && data[start + 1] == '\n')
-                start += 2;
+    /**
+     * Copia bytes de `in` para `out` até encontrar `delim` usando ring-buffer.
+     * Retorna true se o delimitador foi encontrado, false em EOF.
+     * Nunca aloca mais do que delim.length bytes de overhead.
+     */
+    private static boolean copyTillDelim(InputStream in, byte[] delim, OutputStream out)
+            throws IOException {
+        int dlen  = delim.length;
+        byte[] ring = new byte[dlen];
+        int head  = 0; // índice do byte mais antigo no ring
+        int count = 0; // quantos bytes estão no ring
+
+        while (true) {
+            int b = in.read();
+            if (b == -1) {
+                // EOF: descarrega o conteúdo restante do ring
+                for (int i = 0; i < count; i++) out.write(ring[(head + i) % dlen] & 0xFF);
+                return false;
+            }
+
+            if (count < dlen) {
+                ring[(head + count) % dlen] = (byte) b;
+                count++;
+                if (count == dlen) {
+                    // Ring acabou de encher: verifica match imediato
+                    boolean match = true;
+                    for (int i = 0; i < dlen; i++) {
+                        if (ring[(head + i) % dlen] != delim[i]) { match = false; break; }
+                    }
+                    if (match) return true;
+                }
+            } else {
+                // Ring cheio: emite o byte mais antigo antes de sobrescrevê-lo
+                byte oldest = ring[head];
+                out.write(oldest & 0xFF);
+                ring[head] = (byte) b;
+                head = (head + 1) % dlen;
+
+                // Verifica se o ring agora contém o delimitador
+                boolean match = true;
+                for (int i = 0; i < dlen; i++) {
+                    if (ring[(head + i) % dlen] != delim[i]) { match = false; break; }
+                }
+                if (match) return true;
+            }
         }
-        return parts;
     }
 
-    private static int indexOf(byte[] data, byte[] pattern, int from) {
-        outer:
-        for (int i = from; i <= data.length - pattern.length; i++) {
-            for (int j = 0; j < pattern.length; j++)
-                if (data[i + j] != pattern[j]) continue outer;
-            return i;
+    /** Lê e descarta bytes até (e incluindo) o próximo '\n'. */
+    private static void skipLn(InputStream in) throws IOException {
+        int b;
+        while ((b = in.read()) != -1) {
+            if (b == '\n') return;
         }
-        return -1;
     }
 
-    private static byte[] subArray(byte[] src, int from, int to) {
-        byte[] dest = new byte[to - from];
-        System.arraycopy(src, from, dest, 0, dest.length);
-        return dest;
+    /**
+     * Lê cabeçalhos HTTP de uma parte multipart até a linha em branco.
+     * Retorna mapa lowercase-nome → valor, ou null em EOF.
+     */
+    private static Map<String, String> readHdrs(InputStream in) throws IOException {
+        Map<String, String> hdrs = new LinkedHashMap<>();
+        StringBuilder line = new StringBuilder();
+        while (true) {
+            int b = in.read();
+            if (b == -1) return null;
+            if (b == '\r') continue; // ignora CR
+            if (b == '\n') {
+                String s = line.toString();
+                if (s.isEmpty()) break; // linha em branco = fim dos cabeçalhos
+                int colon = s.indexOf(':');
+                if (colon > 0) {
+                    hdrs.put(s.substring(0, colon).trim().toLowerCase(),
+                             s.substring(colon + 1).trim());
+                }
+                line.setLength(0);
+            } else {
+                line.append((char) b);
+            }
+        }
+        return hdrs;
+    }
+
+    /** Extrai o valor de um parâmetro nomeado de um cabeçalho Content-Disposition. */
+    private static String dispParam(String disp, String paramName) {
+        String search = paramName + "=\"";
+        int idx = disp.indexOf(search);
+        if (idx < 0) return null;
+        int start = idx + search.length();
+        int end   = disp.indexOf('"', start);
+        return end < 0 ? disp.substring(start) : disp.substring(start, end);
     }
 
     private static String extractBoundary(String contentType) {
