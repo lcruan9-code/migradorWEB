@@ -10,27 +10,43 @@ chmod 777 /var/run/firebird/3.0
 
 echo "[Entrypoint] Iniciando Firebird 3.0..."
 
-# Tenta via init.d primeiro (Ubuntu padrão)
-if /etc/init.d/firebird3.0 start 2>&1; then
-    echo "[Entrypoint] Firebird iniciado via init.d"
-else
-    echo "[Entrypoint] init.d falhou — tentando binário direto..."
-    # Fallback: inicia o processo SuperClassic diretamente como user firebird
-    if command -v fb_inet_server &>/dev/null; then
-        su -s /bin/sh firebird -c 'fb_inet_server &' 2>/dev/null || \
-        fb_inet_server &
-        echo "[Entrypoint] fb_inet_server iniciado"
-    elif [ -f /usr/sbin/firebird ]; then
-        su -s /bin/sh firebird -c '/usr/sbin/firebird &' 2>/dev/null || \
-        /usr/sbin/firebird &
-        echo "[Entrypoint] /usr/sbin/firebird iniciado"
-    else
-        echo "[Entrypoint] AVISO: nenhum binário Firebird encontrado — migração usará fallback"
+# fbguard é o processo correto para iniciar o Firebird em todos os modos.
+# No SuperServer mode (firebird.conf), ele cria um daemon que escuta na porta 3050.
+FB_STARTED=false
+
+if [ -x /usr/sbin/fbguard ]; then
+    echo "[Entrypoint] Iniciando fbguard como user firebird..."
+    # Roda fbguard como user 'firebird'; sem -f ele se daemoniza automaticamente
+    su -s /bin/sh firebird -c '/usr/sbin/fbguard' 2>&1 &
+    sleep 1
+    FB_STARTED=true
+    echo "[Entrypoint] fbguard acionado"
+fi
+
+# Fallback 1: init.d (pode não funcionar sem systemd, mas tenta)
+if [ "$FB_STARTED" = "false" ]; then
+    echo "[Entrypoint] fbguard não encontrado — tentando init.d..."
+    if /etc/init.d/firebird3.0 start 2>&1; then
+        echo "[Entrypoint] Firebird iniciado via init.d"
+        FB_STARTED=true
     fi
 fi
 
-# Aguarda Firebird estar pronto na porta 3050 (max 30s)
-MAX_WAIT=30
+# Fallback 2: binário de superserver direto
+if [ "$FB_STARTED" = "false" ]; then
+    echo "[Entrypoint] Tentando /usr/sbin/firebird (superserver)..."
+    if [ -x /usr/sbin/firebird ]; then
+        su -s /bin/sh firebird -c '/usr/sbin/firebird' 2>&1 &
+        FB_STARTED=true
+    fi
+fi
+
+if [ "$FB_STARTED" = "false" ]; then
+    echo "[Entrypoint] AVISO: nenhum binário Firebird encontrado — migração usará fallback"
+fi
+
+# Aguarda Firebird estar pronto na porta 3050 (max 40s)
+MAX_WAIT=40
 count=0
 FB_OK=false
 while [ "$count" -lt "$MAX_WAIT" ]; do
@@ -45,7 +61,7 @@ done
 
 if [ "$FB_OK" = "true" ]; then
     echo "[Entrypoint] ✅ Firebird 3.0 pronto na porta 3050"
-    # Garante senha SYSDBA=masterkey (idempotente, falha silenciosa se já ok)
+    # Garante senha SYSDBA=masterkey (idempotente)
     echo "modify SYSDBA -pw masterkey" | \
         /usr/bin/gsec -user SYSDBA -password masterkey 2>/dev/null || \
     echo "modify SYSDBA -pw masterkey" | \
