@@ -115,12 +115,62 @@ public class AppWorker {
             StringBuilder sb = new StringBuilder();
             sb.append("=== DIAG AppWorker ===\n\n");
 
-            sb.append("--- Porta 3050 ---\n");
+            sb.append("--- Resolução de localhost ---\n");
+            try {
+                java.net.InetAddress[] addrs = java.net.InetAddress.getAllByName("localhost");
+                for (java.net.InetAddress a : addrs) sb.append("  " + a + "\n");
+            } catch (Exception e) {
+                sb.append("  erro: " + e.getMessage() + "\n");
+            }
+
+            sb.append("\n--- Porta 3050 ---\n");
+            // IPv4 explícito
+            try (java.net.Socket s = new java.net.Socket()) {
+                s.connect(new java.net.InetSocketAddress("127.0.0.1", 3050), 1000);
+                sb.append("127.0.0.1:3050 = ABERTA\n");
+            } catch (Exception e) {
+                sb.append("127.0.0.1:3050 = FECHADA (" + e.getMessage() + ")\n");
+            }
+            // IPv6 explícito
+            try (java.net.Socket s = new java.net.Socket()) {
+                s.connect(new java.net.InetSocketAddress("::1", 3050), 1000);
+                sb.append("::1:3050 = ABERTA\n");
+            } catch (Exception e) {
+                sb.append("::1:3050 = FECHADA (" + e.getMessage() + ")\n");
+            }
+            // localhost genérico
             try (java.net.Socket s = new java.net.Socket()) {
                 s.connect(new java.net.InetSocketAddress("localhost", 3050), 1000);
-                sb.append("STATUS: ABERTA\n");
+                sb.append("localhost:3050 = ABERTA\n");
             } catch (Exception e) {
-                sb.append("STATUS: FECHADA (" + e.getMessage() + ")\n");
+                sb.append("localhost:3050 = FECHADA (" + e.getMessage() + ")\n");
+            }
+
+            sb.append("\n--- /proc/net/tcp (porta 3050 = 0BEA hex) ---\n");
+            try (java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.FileReader("/proc/net/tcp"))) {
+                String line;
+                sb.append(br.readLine() + "\n"); // header
+                while ((line = br.readLine()) != null) {
+                    if (line.contains(":0BEA") || line.contains(":0bea")) {
+                        sb.append(line + "\n");
+                    }
+                }
+            } catch (Exception e) {
+                sb.append("/proc/net/tcp error: " + e.getMessage() + "\n");
+            }
+            try (java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.FileReader("/proc/net/tcp6"))) {
+                String line;
+                sb.append("\n/proc/net/tcp6 (porta 3050):\n");
+                sb.append(br.readLine() + "\n");
+                while ((line = br.readLine()) != null) {
+                    if (line.contains(":0BEA") || line.contains(":0bea")) {
+                        sb.append(line + "\n");
+                    }
+                }
+            } catch (Exception e) {
+                sb.append("/proc/net/tcp6 error: " + e.getMessage() + "\n");
             }
 
             sb.append("\n--- Binários Firebird ---\n");
