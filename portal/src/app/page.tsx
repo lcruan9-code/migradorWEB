@@ -137,16 +137,24 @@ export default function Home() {
     pollingRef.current = setInterval(async () => {
       try {
         const res  = await fetch(`${WORKER_DIRECT}/api/status/${jobId}`);
+        if (res.status === 404) {
+          setStatus("ERRO");
+          setLogs(l => [...l, "[Worker] Job não encontrado — o container reiniciou. Tente novamente."]);
+          return;
+        }
         const data = await res.json();
-        setStatus(data.status);
+        if (data.status) setStatus(data.status);
         setProgresso(data.progresso ?? 0);
         setTotal(data.total ?? 15);
-        setLogs(data.logs ?? []);
+        if (data.logs?.length > 0) setLogs(data.logs);
         if (data.status === "CONCLUIDO") {
           setDownloadUrl(`${WORKER_DIRECT}/api/download/${jobId}`);
         }
-      } catch { /* worker ainda inicializando */ }
-    }, 1500);
+      } catch (e) {
+        // Worker ainda inicializando ou dormindo — não altera o estado
+        console.warn("[Polling] falhou:", e);
+      }
+    }, 2000);
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, [jobId, status]);
 
