@@ -45,7 +45,7 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 ENV PORT=8080
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -Dfile.encoding=UTF-8"
+ENV JAVA_TOOL_OPTIONS="-Xmx200m -Dfile.encoding=UTF-8"
 
 EXPOSE 8080
 
