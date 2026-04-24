@@ -127,10 +127,16 @@ public class AppWorker {
                     respond(ex, 400, err("Arquivo não recebido")); return;
                 }
 
-                // Salva o arquivo enviado em temp
-                Path tmpDir      = Files.createTempDirectory("migrador-");
+                // Salva o arquivo enviado em diretório acessível pelo processo do Firebird.
+                // No Linux/Docker o Firebird roda como user 'firebird'; /app/fdb-work tem chmod 777.
+                // No Windows usa o temp padrão do sistema.
+                java.nio.file.Path workBase = resolverWorkDir();
+                Path tmpDir      = Files.createTempDirectory(workBase, "migrador-");
+                tmpDir.toFile().setReadable(true, false);
+                tmpDir.toFile().setExecutable(true, false);
                 Path uploadPath  = tmpDir.resolve(filename);
                 Files.write(uploadPath, data.fileBytes);
+                uploadPath.toFile().setReadable(true, false);
 
                 String jobId = UUID.randomUUID().toString();
                 JobState job = new JobState(jobId, tmpDir);
@@ -231,7 +237,20 @@ public class AppWorker {
         boolean isWin    = System.getProperty("os.name", "").toLowerCase().contains("win");
         String  binName  = isWin ? "gbak.exe" : "gbak";
 
-        // Procura em todas as versões bundled — gbak do 2.5 serve para restaurar qualquer .fbk
+        // 1. Verifica paths do sistema (Linux/Docker com Firebird instalado via apt)
+        if (!isWin) {
+            String[] systemPaths = { "/usr/bin/gbak", "/usr/local/bin/gbak", "/usr/sbin/gbak" };
+            for (String sp : systemPaths) {
+                java.nio.file.Path p = java.nio.file.Paths.get(sp);
+                if (Files.exists(p)) {
+                    // fbHome = diretório pai de 'bin' (ex: /usr → usado como FIREBIRD env)
+                    String fbHome = p.getParent().getParent().toAbsolutePath().toString();
+                    return new String[]{ p.toAbsolutePath().toString(), fbHome };
+                }
+            }
+        }
+
+        // 2. Procura na pasta FIREBIRD/ bundled (ambiente Windows local)
         String[] versoes = {
             "Firebird-2.5.9.manual",
             "Firebird-2.5.manual",
@@ -247,9 +266,21 @@ public class AppWorker {
         }
 
         throw new Exception(
-            "gbak não encontrado na pasta FIREBIRD/ bundled.\n" +
-            "Caminho esperado: " + java.nio.file.Paths.get(baseDir, "FIREBIRD", "Firebird-2.5.9.manual", "bin", binName) + "\n" +
-            "Certifique-se de que a pasta FIREBIRD/ está no mesmo diretório que a aplicação.");
+            "gbak não encontrado. No Docker: instale firebird3.0-server. " +
+            "No Windows: coloque a pasta FIREBIRD/ em " + baseDir);
+    }
+
+    private static java.nio.file.Path resolverWorkDir() {
+        boolean isWin = System.getProperty("os.name", "").toLowerCase().contains("win");
+        if (!isWin) {
+            // No Linux/Docker: usa /app/fdb-work (chmod 777) para que o processo
+            // Firebird (user 'firebird') consiga abrir o arquivo enviado pelo usuário.
+            java.nio.file.Path linuxWork = java.nio.file.Paths.get("/app/fdb-work");
+            if (Files.exists(linuxWork) && linuxWork.toFile().canWrite()) {
+                return linuxWork;
+            }
+        }
+        return java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"));
     }
 
     private static void restaurarFbk(Path fbkPath, Path fdbPath, JobState job)
