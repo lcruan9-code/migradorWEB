@@ -45,6 +45,12 @@ const ESTADOS: Estado[] = [
 ];
 type Cidade = { id: number; nome: string };
 
+// URL pública do worker (embedded no bundle pelo Next.js no build do Vercel).
+// Chamadas pesadas (upload, status, download) vão direto do browser para o Render,
+// evitando o limite de 10s e 4.5MB das serverless functions do Vercel.
+const WORKER_DIRECT =
+  (process.env.NEXT_PUBLIC_WORKER_URL ?? "http://localhost:8080").replace(/\/$/, "");
+
 export default function Home() {
   const [sistema, setSistema]   = useState("syspdv");
   const [file, setFile]         = useState<File | null>(null);
@@ -130,14 +136,14 @@ export default function Home() {
     }
     pollingRef.current = setInterval(async () => {
       try {
-        const res  = await fetch(`/api/status/${jobId}`);
+        const res  = await fetch(`${WORKER_DIRECT}/api/status/${jobId}`);
         const data = await res.json();
         setStatus(data.status);
         setProgresso(data.progresso ?? 0);
         setTotal(data.total ?? 15);
         setLogs(data.logs ?? []);
         if (data.status === "CONCLUIDO") {
-          setDownloadUrl(`/api/download/${jobId}`);
+          setDownloadUrl(`${WORKER_DIRECT}/api/download/${jobId}`);
         }
       } catch { /* worker ainda inicializando */ }
     }, 1500);
@@ -172,7 +178,7 @@ export default function Home() {
       formData.append("regime",  regime);
       formData.append("arquivo", file, file.name);
 
-      const res  = await fetch(`/api/processar`, { method: "POST", body: formData });
+      const res  = await fetch(`${WORKER_DIRECT}/api/processar`, { method: "POST", body: formData });
       const data = await res.json();
 
       if (data.jobId) {
@@ -180,11 +186,15 @@ export default function Home() {
         setStatus("PROCESSANDO");
       } else {
         setStatus("ERRO");
-        setLogs(["Erro: " + (data.erro ?? "resposta inválida do worker")]);
+        setLogs(["Erro: " + (data.erro ?? data.error ?? "resposta inválida do worker")]);
       }
-    } catch {
+    } catch (err) {
       setStatus("ERRO");
-      setLogs(["Não foi possível conectar ao Worker Java."]);
+      setLogs([
+        "Não foi possível conectar ao Worker Java.",
+        "Worker URL: " + WORKER_DIRECT,
+        String(err),
+      ]);
     }
   };
 
