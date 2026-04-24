@@ -178,6 +178,20 @@ export default function Home() {
     setLogs([]); setProgresso(0); setDownloadUrl(null);
     setStatus("PENDENTE"); setJobId(null);
 
+    const fileMB = (file.size / 1024 / 1024).toFixed(1);
+    setLogs([`[Portal] Acordando o servidor...`]);
+
+    // Aquece o container antes do upload (evita cold-start durante o envio)
+    try {
+      await fetch(`${WORKER_DIRECT}/health`, { signal: AbortSignal.timeout(10000) });
+    } catch (_) { /* ignora — tenta o upload mesmo assim */ }
+
+    setLogs([`[Portal] Enviando arquivo ${file.name} (${fileMB} MB)... aguarde`]);
+
+    // Timeout de 3 minutos para upload de arquivos grandes
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 180_000);
+
     try {
       const formData = new FormData();
       formData.append("sistema", sistema);
@@ -186,23 +200,37 @@ export default function Home() {
       formData.append("regime",  regime);
       formData.append("arquivo", file, file.name);
 
-      const res  = await fetch(`${WORKER_DIRECT}/api/processar`, { method: "POST", body: formData });
+      const res  = await fetch(`${WORKER_DIRECT}/api/processar`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
       const data = await res.json();
 
       if (data.jobId) {
         setJobId(data.jobId);
         setStatus("PROCESSANDO");
+        setLogs(l => [...l, `[Portal] Arquivo recebido — job ${data.jobId.slice(0, 8)} iniciado`]);
       } else {
         setStatus("ERRO");
-        setLogs(["Erro: " + (data.erro ?? data.error ?? "resposta inválida do worker")]);
+        setLogs(l => [...l, "Erro: " + (data.erro ?? data.error ?? "resposta inválida do worker")]);
       }
-    } catch (err) {
+    } catch (err: any) {
+      clearTimeout(timeoutId);
       setStatus("ERRO");
-      setLogs([
-        "Não foi possível conectar ao Worker Java.",
-        "Worker URL: " + WORKER_DIRECT,
-        String(err),
-      ]);
+      if (err?.name === "AbortError") {
+        setLogs(l => [...l,
+          "⚠ Timeout: o arquivo demorou mais de 3 min para ser enviado.",
+          "Tente um arquivo menor ou verifique sua conexão.",
+        ]);
+      } else {
+        setLogs(l => [...l,
+          "Não foi possível conectar ao Worker Java.",
+          "Worker URL: " + WORKER_DIRECT,
+          String(err),
+        ]);
+      }
     }
   };
 
@@ -238,7 +266,7 @@ export default function Home() {
             Portal de Migração LC
           </h1>
           <div className="flex flex-col items-center gap-1">
-             <p className="text-neutral-400 text-sm">Geração Direta de .SQL — Ambiente Local</p>
+             <p className="text-neutral-400 text-sm">Geração Direta de .SQL — Ambiente Cloud</p>
              <div className="flex items-center gap-2 px-3 py-1 bg-neutral-950/50 rounded-full border border-neutral-800">
                <span className={`w-2 h-2 rounded-full ${workerOnline ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"}`} />
                <span className="text-[10px] uppercase font-bold tracking-widest text-neutral-500">
