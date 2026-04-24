@@ -19,19 +19,19 @@ FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
 
-# Instala Firebird 3.0 SuperServer (ouve direto na porta 3050, sem inetd) + ferramentas
-# firebird3.0-server (classic) requer inetd para aceitar conexões TCP — não funciona no Docker
-# firebird3.0-superserver tem um processo persistente que ouve 3050 diretamente
+# Instala Firebird 3.0 server + ferramentas (único pacote disponível no Ubuntu 22.04 Jammy)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        firebird3.0-superserver \
-        firebird3.0-utils \
+        firebird3.0-server \
         netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
-# Configura Firebird 3.0 para aceitar autenticação legacy (compatível com Jaybird 4)
-# e desabilita criptografia do wire para simplificar a conexão local
-RUN printf '\nAuthServer = Legacy_Auth, Srp256, Srp\nUserManager = Legacy_UserManager, Srp\nWireCrypt = Disabled\nDatabaseAccess = Full\n' \
+# Configura Firebird 3.0:
+#   ServerMode = SuperServer → processo persistente ouvindo na porta 3050 (sem inetd)
+#   AuthServer/UserManager → autenticação legacy para Jaybird 4
+#   WireCrypt Disabled → simplifica conexão local
+#   DatabaseAccess Full → acessa qualquer path de .fdb
+RUN printf '\nServerMode = SuperServer\nAuthServer = Legacy_Auth, Srp256, Srp\nUserManager = Legacy_UserManager, Srp\nWireCrypt = Disabled\nDatabaseAccess = Full\n' \
     >> /etc/firebird/3.0/firebird.conf
 
 # Diretório de trabalho acessível tanto pelo Java (root) quanto pelo Firebird (user firebird)
