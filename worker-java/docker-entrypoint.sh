@@ -8,45 +8,50 @@ mkdir -p /var/run/firebird/3.0
 chown -R firebird:firebird /var/run/firebird/3.0 2>/dev/null || true
 chmod 777 /var/run/firebird/3.0
 
+# Diagnóstico: lista binários Firebird disponíveis
+echo "[Entrypoint] Binários Firebird encontrados:"
+for b in /usr/sbin/firebird /usr/sbin/fbguard /usr/sbin/fb_inet_server \
+          /usr/lib/firebird/3.0/bin/fbguard /usr/lib/firebird/3.0/bin/fb_inet_server; do
+    [ -f "$b" ] && echo "  $b ($(ls -la $b | awk '{print $1,$3,$4}'))" || true
+done
+
 echo "[Entrypoint] Iniciando Firebird 3.0..."
 
-# fbguard é o processo correto para iniciar o Firebird em todos os modos.
-# No SuperServer mode (firebird.conf), ele cria um daemon que escuta na porta 3050.
-FB_STARTED=false
+# Método 1: init.d (usa start-stop-daemon corretamente para o pacote Ubuntu)
+echo "[Entrypoint] Tentando /etc/init.d/firebird3.0 start..."
+/etc/init.d/firebird3.0 start 2>&1 || true
 
-if [ -x /usr/sbin/fbguard ]; then
-    echo "[Entrypoint] Iniciando fbguard como user firebird..."
-    # Roda fbguard como user 'firebird'; sem -f ele se daemoniza automaticamente
-    su -s /bin/sh firebird -c '/usr/sbin/fbguard' 2>&1 &
-    sleep 1
-    FB_STARTED=true
-    echo "[Entrypoint] fbguard acionado"
-fi
+# Aguarda brevemente para ver se o init.d funcionou
+sleep 2
+if nc -z localhost 3050 2>/dev/null; then
+    echo "[Entrypoint] ✅ Firebird respondeu após init.d"
+else
+    echo "[Entrypoint] init.d não abriu a porta — tentando startup direto..."
 
-# Fallback 1: init.d (pode não funcionar sem systemd, mas tenta)
-if [ "$FB_STARTED" = "false" ]; then
-    echo "[Entrypoint] fbguard não encontrado — tentando init.d..."
-    if /etc/init.d/firebird3.0 start 2>&1; then
-        echo "[Entrypoint] Firebird iniciado via init.d"
-        FB_STARTED=true
-    fi
-fi
-
-# Fallback 2: binário de superserver direto
-if [ "$FB_STARTED" = "false" ]; then
-    echo "[Entrypoint] Tentando /usr/sbin/firebird (superserver)..."
+    # Método 2: /usr/sbin/firebird diretamente (guardian do pacote Ubuntu 22.04)
     if [ -x /usr/sbin/firebird ]; then
-        su -s /bin/sh firebird -c '/usr/sbin/firebird' 2>&1 &
-        FB_STARTED=true
+        echo "[Entrypoint] Iniciando /usr/sbin/firebird como user firebird..."
+        su -s /bin/sh firebird -c '/usr/sbin/firebird -daemon -pidfile /var/run/firebird/3.0/firebird.pid' 2>&1 &
+        sleep 2
+    fi
+
+    # Método 3: fbguard (Ubuntu 18.04 e anteriores)
+    if ! nc -z localhost 3050 2>/dev/null && [ -x /usr/sbin/fbguard ]; then
+        echo "[Entrypoint] Tentando /usr/sbin/fbguard..."
+        su -s /bin/sh firebird -c '/usr/sbin/fbguard' 2>&1 &
+        sleep 2
+    fi
+
+    # Método 4: fb_inet_server em modo standalone
+    if ! nc -z localhost 3050 2>/dev/null && [ -x /usr/sbin/fb_inet_server ]; then
+        echo "[Entrypoint] Tentando fb_inet_server standalone..."
+        su -s /bin/sh firebird -c '/usr/sbin/fb_inet_server' 2>&1 &
+        sleep 2
     fi
 fi
 
-if [ "$FB_STARTED" = "false" ]; then
-    echo "[Entrypoint] AVISO: nenhum binário Firebird encontrado — migração usará fallback"
-fi
-
-# Aguarda Firebird estar pronto na porta 3050 (max 40s)
-MAX_WAIT=40
+# Aguarda Firebird estar pronto na porta 3050 (max 45s)
+MAX_WAIT=45
 count=0
 FB_OK=false
 while [ "$count" -lt "$MAX_WAIT" ]; do
@@ -61,13 +66,15 @@ done
 
 if [ "$FB_OK" = "true" ]; then
     echo "[Entrypoint] ✅ Firebird 3.0 pronto na porta 3050"
-    # Garante senha SYSDBA=masterkey (idempotente)
+    # Garante senha SYSDBA=masterkey (idempotente, falha silenciosa se já ok)
     echo "modify SYSDBA -pw masterkey" | \
         /usr/bin/gsec -user SYSDBA -password masterkey 2>/dev/null || \
     echo "modify SYSDBA -pw masterkey" | \
         /usr/bin/gsec -user SYSDBA -password "" 2>/dev/null || true
 else
     echo "[Entrypoint] ⚠ Firebird nao respondeu em ${MAX_WAIT}s"
+    echo "[Entrypoint]   Processos ativos:"
+    ps aux | grep -i firebird | grep -v grep || true
     echo "[Entrypoint]   A migração de .FDB vai falhar — verifique os logs acima"
 fi
 

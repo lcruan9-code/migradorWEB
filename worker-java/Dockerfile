@@ -28,7 +28,7 @@ RUN apt-get update && \
 
 # Configura Firebird 3.0 para aceitar autenticação legacy (compatível com Jaybird 4)
 # e desabilita criptografia do wire para simplificar a conexão local
-RUN printf '\nAuthServer = Legacy_Auth, Srp256, Srp\nUserManager = Legacy_UserManager, Srp\nWireCrypt = Disabled\nDatabaseAccess = Full\nServerMode = SuperServer\n' \
+RUN printf '\nAuthServer = Legacy_Auth, Srp256, Srp\nUserManager = Legacy_UserManager, Srp\nWireCrypt = Disabled\nDatabaseAccess = Full\n' \
     >> /etc/firebird/3.0/firebird.conf
 
 # Diretório de trabalho acessível tanto pelo Java (root) quanto pelo Firebird (user firebird)
