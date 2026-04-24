@@ -34,9 +34,13 @@ RUN printf '\nAuthServer = Legacy_Auth, Srp256, Srp\nUserManager = Legacy_UserMa
 # Diretório de trabalho acessível tanto pelo Java (root) quanto pelo Firebird (user firebird)
 RUN mkdir -p /app/fdb-work && chmod 777 /app/fdb-work
 
-# Cria o caminho esperado pelo resolverGbak() do Java apontando para o gbak do sistema
+# Cria a estrutura esperada pelo GerenciadorFirebird.java:
+#   tentarMapear() procura "firebird.exe" na raiz da pasta de instalação
+#   iniciarInstalacao() executa: firebird.exe -a
+# No Linux, "firebird.exe" é um nome de arquivo válido — o symlink aponta para o binário real.
 RUN mkdir -p /app/FIREBIRD/Firebird-3.0.manual/bin && \
-    ln -sf /usr/bin/gbak /app/FIREBIRD/Firebird-3.0.manual/bin/gbak
+    ln -sf /usr/bin/gbak /app/FIREBIRD/Firebird-3.0.manual/bin/gbak && \
+    ln -sf /usr/sbin/firebird /app/FIREBIRD/Firebird-3.0.manual/firebird.exe
 
 COPY --from=build /app/out ./app
 COPY --from=build /app/lib ./lib

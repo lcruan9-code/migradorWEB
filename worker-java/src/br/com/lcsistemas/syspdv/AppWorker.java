@@ -42,6 +42,7 @@ public class AppWorker {
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
         server.createContext("/health",       new HealthHandler());
+        server.createContext("/diag",         new DiagHandler());
         server.createContext("/api/processar", new ProcessarHandler());
         server.createContext("/api/status",    new StatusHandler());
         server.createContext("/api/download",  new DownloadHandler());
@@ -97,6 +98,96 @@ public class AppWorker {
                 respond(ex, 405, err("Método não permitido")); return;
             }
             respond(ex, 200, "{\"ok\":true}");
+        }
+    }
+
+    // =========================================================================
+    //  GET /diag  — diagnóstico do ambiente (Firebird, binários, portas)
+    // =========================================================================
+
+    static class DiagHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange ex) throws IOException {
+            addCors(ex);
+            if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+                ex.sendResponseHeaders(204, -1); return;
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("=== DIAG AppWorker ===\n\n");
+
+            sb.append("--- Porta 3050 ---\n");
+            try (java.net.Socket s = new java.net.Socket()) {
+                s.connect(new java.net.InetSocketAddress("localhost", 3050), 1000);
+                sb.append("STATUS: ABERTA\n");
+            } catch (Exception e) {
+                sb.append("STATUS: FECHADA (" + e.getMessage() + ")\n");
+            }
+
+            sb.append("\n--- Binários Firebird ---\n");
+            for (String p : new String[]{
+                    "/usr/sbin/firebird", "/usr/sbin/fbguard", "/usr/sbin/fb_inet_server",
+                    "/usr/lib/firebird/3.0/bin/fbguard", "/usr/lib/firebird/3.0/bin/fb_inet_server",
+                    "/usr/bin/gbak", "/usr/bin/isql-fb", "/usr/bin/gsec"}) {
+                java.io.File f = new java.io.File(p);
+                if (f.exists()) sb.append(p + " [" + (f.canExecute() ? "exec" : "no-exec") + "]\n");
+            }
+
+            sb.append("\n--- /app/FIREBIRD ---\n");
+            appendDir(sb, new java.io.File("/app/FIREBIRD"), 3, "");
+
+            sb.append("\n--- Security DB ---\n");
+            for (String p : new String[]{
+                    "/var/lib/firebird/3.0/system/security3.fdb",
+                    "/var/lib/firebird/3.0/security/security3.fdb",
+                    "/var/lib/firebird/3.0/security3.fdb"}) {
+                java.io.File f = new java.io.File(p);
+                sb.append(p + ": " + (f.exists() ? "OK (" + f.length() + " bytes)" : "MISSING") + "\n");
+            }
+
+            sb.append("\n--- Processos ---\n");
+            try {
+                Process proc = new ProcessBuilder("ps", "aux").redirectErrorStream(true).start();
+                java.io.BufferedReader br = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(proc.getInputStream()));
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (line.toLowerCase().contains("firebird") || line.contains("fbguard")
+                            || line.contains("fb_inet") || line.contains("fbserver")) {
+                        sb.append(line + "\n");
+                    }
+                }
+                proc.waitFor();
+            } catch (Exception e) {
+                sb.append("ps error: " + e.getMessage() + "\n");
+            }
+
+            sb.append("\n--- init.d status ---\n");
+            try {
+                Process proc = new ProcessBuilder("/etc/init.d/firebird3.0", "status")
+                        .redirectErrorStream(true).start();
+                java.io.BufferedReader br = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(proc.getInputStream()));
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line + "\n");
+                proc.waitFor();
+            } catch (Exception e) {
+                sb.append("init.d error: " + e.getMessage() + "\n");
+            }
+
+            byte[] bytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "text/plain; charset=utf-8");
+            ex.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
+        }
+
+        private void appendDir(StringBuilder sb, java.io.File dir, int depth, String indent) {
+            if (!dir.exists()) { sb.append(indent + dir.getAbsolutePath() + ": NOT FOUND\n"); return; }
+            java.io.File[] files = dir.listFiles();
+            if (files == null) return;
+            for (java.io.File f : files) {
+                sb.append(indent + f.getName() + (f.isDirectory() ? "/" : "") + "\n");
+                if (f.isDirectory() && depth > 1) appendDir(sb, f, depth - 1, indent + "  ");
+            }
         }
     }
 
