@@ -19,10 +19,13 @@ FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
 
-# Instala Firebird 3.0 (servidor + ferramentas) e netcat para health check
+# Instala Firebird 3.0 SuperServer (ouve direto na porta 3050, sem inetd) + ferramentas
+# firebird3.0-server (classic) requer inetd para aceitar conexões TCP — não funciona no Docker
+# firebird3.0-superserver tem um processo persistente que ouve 3050 diretamente
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        firebird3.0-server \
+        firebird3.0-superserver \
+        firebird3.0-utils \
         netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 

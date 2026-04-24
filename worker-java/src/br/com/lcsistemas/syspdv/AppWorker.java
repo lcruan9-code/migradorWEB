@@ -174,6 +174,63 @@ public class AppWorker {
                 sb.append("init.d error: " + e.getMessage() + "\n");
             }
 
+            sb.append("\n--- Sockets TCP ouvindo ---\n");
+            for (String[] cmd : new String[][]{{"ss", "-tlnp"}, {"netstat", "-tlnp"}}) {
+                try {
+                    Process proc = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+                    java.io.BufferedReader br = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(proc.getInputStream()));
+                    String line;
+                    boolean found = false;
+                    while ((line = br.readLine()) != null) {
+                        sb.append(line + "\n");
+                        found = true;
+                    }
+                    proc.waitFor();
+                    if (found) break;
+                } catch (Exception e) {
+                    sb.append(cmd[0] + " error: " + e.getMessage() + "\n");
+                }
+            }
+
+            sb.append("\n--- Firebird log ---\n");
+            for (String logPath : new String[]{
+                    "/var/log/firebird/firebird3.0.log",
+                    "/var/lib/firebird/3.0/firebird.log",
+                    "/tmp/firebird.log"}) {
+                java.io.File f = new java.io.File(logPath);
+                if (f.exists()) {
+                    sb.append("=== " + logPath + " (last 30 lines) ===\n");
+                    try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(f, "r")) {
+                        long len = raf.length();
+                        long pos = Math.max(0, len - 4096);
+                        raf.seek(pos);
+                        byte[] buf = new byte[(int)(len - pos)];
+                        raf.readFully(buf);
+                        String[] lines = new String(buf, StandardCharsets.UTF_8).split("\n");
+                        int start = Math.max(0, lines.length - 30);
+                        for (int i = start; i < lines.length; i++) sb.append(lines[i] + "\n");
+                    } catch (Exception e) {
+                        sb.append("read error: " + e.getMessage() + "\n");
+                    }
+                    break;
+                } else {
+                    sb.append(logPath + ": MISSING\n");
+                }
+            }
+
+            sb.append("\n--- firebird.conf (sem comentários) ---\n");
+            try (java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.FileReader("/etc/firebird/3.0/firebird.conf"))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    String t = line.trim();
+                    if (!t.isEmpty() && !t.startsWith("#")) sb.append(line + "\n");
+                }
+            } catch (Exception e) {
+                sb.append("firebird.conf error: " + e.getMessage() + "\n");
+            }
+
             byte[] bytes = sb.toString().getBytes(StandardCharsets.UTF_8);
             ex.getResponseHeaders().add("Content-Type", "text/plain; charset=utf-8");
             ex.sendResponseHeaders(200, bytes.length);
