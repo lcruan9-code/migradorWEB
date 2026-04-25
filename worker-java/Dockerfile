@@ -78,9 +78,9 @@ RUN apt-get update && \
         netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
-# Configura Firebird 3.0: IPv4, Legacy_Auth, acesso total
+# Configura Firebird 3.0: IPv4, Legacy_Auth, acesso total, cache reduzido (pouca RAM)
 RUN sed -i 's/^RemoteBindAddress.*/RemoteBindAddress = 0.0.0.0/' /etc/firebird/3.0/firebird.conf && \
-    printf '\nServerMode = SuperServer\nAuthServer = Srp256, Srp, Legacy_Auth\nUserManager = Srp, Legacy_UserManager\nWireCrypt = Disabled\nDatabaseAccess = Full\n' \
+    printf '\nServerMode = SuperServer\nAuthServer = Srp256, Srp, Legacy_Auth\nUserManager = Srp, Legacy_UserManager\nWireCrypt = Disabled\nDatabaseAccess = Full\nDefaultDBCachePages = 256\n' \
     >> /etc/firebird/3.0/firebird.conf
 
 # Diretório de trabalho acessível por Java (root) e Firebird (user firebird)
@@ -118,7 +118,7 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 ENV PORT=8080
-ENV JAVA_TOOL_OPTIONS="-Xmx350m -Dfile.encoding=UTF-8 -Djava.net.preferIPv4Stack=true"
+ENV JAVA_TOOL_OPTIONS="-Xmx300m -Dfile.encoding=UTF-8 -Djava.net.preferIPv4Stack=true"
 
 EXPOSE 8080
 

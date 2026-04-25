@@ -9,6 +9,7 @@ import br.com.lcsistemas.syspdv.step.*;
 import java.sql.Connection;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
@@ -76,6 +77,13 @@ public class MigracaoSyspdv implements AdaptadorMigracao {
                     + " — OK. inseridos=" + ins + " ignorados=" + ign + " erros=" + err);
                 stepConcluido(nome, ins, ign, err, true);
 
+                // Após PagarStep (i=11, step 12), o Firebird não é mais necessário.
+                // Steps 13-15 (AjustePos, AjusteGeral, GrupoTributacao) usam apenas H2.
+                // Fechar a conexão + parar FB 3.0 libera ~70MB antes do AjusteGeral.
+                if (i == 11) {
+                    liberarFirebird(conn);
+                }
+
             } catch (MigracaoException e) {
                 log("[Step " + (i + 1) + "/" + total + "] " + nome + " — FALHOU: " + e.getMessage());
                 try { ctx.getDestinoConn().rollback(); } catch (Exception rb) { /* ignora */ }
@@ -117,6 +125,44 @@ public class MigracaoSyspdv implements AdaptadorMigracao {
             new AjusteGeralStep(),
             new GrupoTributacaoStep()
         );
+    }
+
+    /**
+     * Fecha a conexão Firebird e para o servidor FB 3.0 para liberar ~70MB de RAM.
+     * Chamado após PagarStep (step 12) — último step que lê do Firebird.
+     * Steps 13-15 (AjustePos, AjusteGeral, GrupoTributacao) usam apenas H2.
+     */
+    private void liberarFirebird(Connection conn) {
+        // 1. Fecha a conexão JDBC (libera buffers Jaybird)
+        try {
+            if (conn != null && !conn.isClosed()) {
+                conn.close();
+                log("[SYSPDV] Conexão Firebird fechada após PagarStep.");
+            }
+        } catch (Exception e) {
+            log("[SYSPDV] AVISO: erro ao fechar conn Firebird: " + e.getMessage());
+        }
+
+        // 2. Para o servidor FB 3.0 (libera ~70MB do processo)
+        try {
+            Process p = new ProcessBuilder("/etc/init.d/firebird3.0", "stop")
+                .redirectErrorStream(true)
+                .start();
+            boolean done = p.waitFor(10, TimeUnit.SECONDS);
+            log("[SYSPDV] FB 3.0 parado (done=" + done + ", exit=" + p.exitValue() + ") — RAM liberada.");
+        } catch (Exception e) {
+            log("[SYSPDV] AVISO: init.d stop falhou: " + e.getMessage() + " — tentando pkill...");
+            try {
+                new ProcessBuilder("pkill", "-f", "firebird3.0").start();
+                log("[SYSPDV] pkill firebird3.0 enviado.");
+            } catch (Exception e2) {
+                log("[SYSPDV] pkill também falhou: " + e2.getMessage());
+            }
+        }
+
+        // 3. Força GC para liberar heap Jaybird
+        System.gc();
+        log("[SYSPDV] GC forçado pós-liberação Firebird.");
     }
 
     private boolean isCancelado() {
