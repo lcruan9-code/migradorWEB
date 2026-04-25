@@ -77,6 +77,10 @@ RUN mkdir -p /app/FIREBIRD/Firebird-3.0.manual/bin && \
 # Copia ferramentas FB 2.5 embedded do stage jacobalberty
 COPY --from=fb25-stage /fb25 /opt/fb25
 
+# gbak25 foi compilado com /usr/local/firebird como caminho hardcoded.
+# Symlink garante que ele encontre firebird.msg e security2.fdb lá.
+RUN ln -sf /opt/fb25 /usr/local/firebird
+
 # Symlink: libfbclient.so.2 → libfbembed.so  (força gbak25 a usar modo embedded)
 RUN chmod +x /opt/fb25/bin/gbak25 && \
     FBEMBED=$(ls /opt/fb25/lib/libfbembed.so.* 2>/dev/null | head -1) && \
