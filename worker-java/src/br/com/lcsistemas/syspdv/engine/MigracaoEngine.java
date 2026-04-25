@@ -343,8 +343,15 @@ public class MigracaoEngine {
     private Connection conectarOrigemComAutoRetry(
             GerenciadorFirebird.LogCallback logCallback) throws Exception {
 
+        // syspdv SEMPRE usa Firebird 2.5 (ODS 11.2) — faz upgrade antes de tentar conectar
+        if ("syspdv".equalsIgnoreCase(config.getSistema())) {
+            log("[syspdv] Banco Firebird 2.5 detectado — executando upgrade ODS antes de conectar...");
+            tentarGfixUpgrade(config.getFbArquivo(), logCallback);
+        }
+
         // Máximo de trocas de versão (nunca trava em loop infinito)
         final int MAX_TENTATIVAS_ODS = 5;
+        boolean gfixTentado = "syspdv".equalsIgnoreCase(config.getSistema()); // já tentou acima
 
         for (int tentativa = 1; tentativa <= MAX_TENTATIVAS_ODS; tentativa++) {
             try {
@@ -359,7 +366,16 @@ public class MigracaoEngine {
                 if (versaoNecessaria != VersaoFirebird.DESCONHECIDA
                         && tentativa < MAX_TENTATIVAS_ODS) {
 
-                    // ── ODS incompatível: trocar para versão correta ──────────
+                    // ── ODS incompatível: tentar gfix -upgrade antes de trocar binário ──
+                    if (!gfixTentado) {
+                        gfixTentado = true;
+                        log("⚠ ODS incompatível (" + versaoNecessaria + ") — tentando gfix -upgrade...");
+                        if (tentarGfixUpgrade(config.getFbArquivo(), logCallback)) {
+                            log("   gfix OK — retentando conexão...");
+                            continue;
+                        }
+                    }
+
                     log("⚠ ODS incompatível: banco criado em " + versaoNecessaria
                         + " — Firebird atual não suporta este formato.");
                     log("   Auto-ajustando para " + versaoNecessaria
@@ -389,6 +405,32 @@ public class MigracaoEngine {
 
         throw new Exception("Não foi possível conectar ao banco Firebird após "
             + MAX_TENTATIVAS_ODS + " tentativas de auto-ajuste de versão.");
+    }
+
+    private boolean tentarGfixUpgrade(String dbPath, GerenciadorFirebird.LogCallback logCallback) {
+        String[] gfixPaths = {"/usr/bin/gfix", "/usr/sbin/gfix", "/usr/local/bin/gfix"};
+        for (String gfixPath : gfixPaths) {
+            if (!new java.io.File(gfixPath).canExecute()) continue;
+            try {
+                log("[gfix] Atualizando ODS: " + gfixPath + " -upgrade " + dbPath);
+                ProcessBuilder pb = new ProcessBuilder(
+                    gfixPath, "-upgrade", dbPath,
+                    "-user", "SYSDBA", "-password", "masterkey");
+                pb.redirectErrorStream(true);
+                Process proc = pb.start();
+                java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(proc.getInputStream()));
+                String line;
+                while ((line = br.readLine()) != null) log("[gfix] " + line);
+                int code = proc.waitFor();
+                log("[gfix] exit=" + code);
+                if (code == 0) return true;
+            } catch (Exception e) {
+                log("[gfix] Erro: " + e.getMessage());
+            }
+        }
+        log("[gfix] upgrade não disponível (gfix não encontrado ou falhou)");
+        return false;
     }
 
     // ── Helpers de notificação ────────────────────────────────────────────────

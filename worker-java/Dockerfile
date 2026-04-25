@@ -23,6 +23,7 @@ WORKDIR /app
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         firebird3.0-server \
+        firebird3.0-utils \
         netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
