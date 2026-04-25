@@ -115,7 +115,7 @@ public class MigracaoConfig {
      */
     public String buildUrlFirebird() {
         return "jdbc:firebirdsql://" + fbHost + ":" + fbPorta + "/" + fbArquivo
-             + "?charSet=Cp1252&authPlugins=Srp256&wireCrypt=DISABLED";
+             + "?charSet=Cp1252&authPlugins=Legacy_Auth";
     }
 
     /**
