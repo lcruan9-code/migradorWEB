@@ -31,8 +31,15 @@ RUN set -eux; \
     # Copia gbak renomeado para não conflitar com gbak do FB 3.0
     cp "$FB_ROOT/bin/gbak" /fb25/bin/gbak25; \
     chmod +x /fb25/bin/gbak25; \
-    # Copia todas as libs: libfbembed, libfbclient e ICU bundled pelo instalador
+    # Copia todas as libs do diretório Firebird (libfbembed, libfbclient, etc.)
     find "$FB_ROOT/lib" -name '*.so*' | xargs -I{} cp {} /fb25/lib/; \
+    # Copia as libs ICU do sistema — jacobalberty não as embute no FB_ROOT/lib,
+    # ficam em /usr/lib. gbak25 precisa delas via LD_LIBRARY_PATH no runtime.
+    find /usr/lib /lib -name 'libicuuc.so.*'   2>/dev/null | xargs -I{} cp {} /fb25/lib/ || true; \
+    find /usr/lib /lib -name 'libicudata.so.*' 2>/dev/null | xargs -I{} cp {} /fb25/lib/ || true; \
+    find /usr/lib /lib -name 'libicui18n.so.*' 2>/dev/null | xargs -I{} cp {} /fb25/lib/ || true; \
+    echo "=== ICU libs copiadas ==="; \
+    ls /fb25/lib/libicu* 2>/dev/null || echo "AVISO: nenhuma lib ICU encontrada!"; \
     # Security DB e message file (necessários para o embedded engine)
     cp "$FB_ROOT/security2.fdb" /fb25/ 2>/dev/null || echo "security2.fdb não encontrado"; \
     cp "$FB_ROOT/firebird.msg"  /fb25/ 2>/dev/null || echo "firebird.msg não encontrado"; \
