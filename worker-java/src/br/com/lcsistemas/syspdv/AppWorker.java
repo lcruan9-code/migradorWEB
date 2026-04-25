@@ -272,6 +272,28 @@ public class AppWorker {
                 }
             }
 
+            sb.append("\n--- Teste Auth SYSDBA (Jaybird) ---\n");
+            try { Class.forName("org.firebirdsql.jdbc.FBDriver"); } catch (Exception ignore) {}
+            String[] testPasswords = {"masterkey", "", "masterke", "sysdba", "SYSDBA"};
+            String[] authPlugins   = {"Srp256", "Legacy_Auth"};
+            for (String plugin : authPlugins) {
+                for (String pass : testPasswords) {
+                    String testUrl = "jdbc:firebirdsql://localhost:3050/tmp/auth_test_"
+                        + System.currentTimeMillis() + ".fdb?authPlugins=" + plugin + "&wireCrypt=DISABLED";
+                    try {
+                        java.sql.DriverManager.setLoginTimeout(3);
+                        java.sql.Connection tc = java.sql.DriverManager.getConnection(testUrl, "SYSDBA", pass);
+                        tc.close();
+                        sb.append("[" + plugin + "] senha='" + pass + "' → AUTH+DB OK\n");
+                    } catch (Exception e) {
+                        String msg = e.getMessage() == null ? "" : e.getMessage();
+                        boolean authFail = msg.contains("335544472") || msg.contains("not defined") || msg.contains("isc_login");
+                        sb.append("[" + plugin + "] senha='" + pass + "' → " +
+                            (authFail ? "AUTH FAIL" : "Auth OK / DB err: " + msg.substring(0, Math.min(100, msg.length()))) + "\n");
+                    }
+                }
+            }
+
             sb.append("\n--- firebird.conf (sem comentários) ---\n");
             try (java.io.BufferedReader br = new java.io.BufferedReader(
                     new java.io.FileReader("/etc/firebird/3.0/firebird.conf"))) {
