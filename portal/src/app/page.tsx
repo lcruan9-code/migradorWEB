@@ -186,27 +186,68 @@ export default function Home() {
       await fetch(`${WORKER_DIRECT}/health`, { signal: AbortSignal.timeout(10000) });
     } catch (_) { /* ignora — tenta o upload mesmo assim */ }
 
-    setLogs([`[Portal] Enviando arquivo ${file.name} (${fileMB} MB)... aguarde`]);
-
-    // Timeout de 3 minutos para upload de arquivos grandes
+    // Timeout de 10 minutos para arquivos grandes
     const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 180_000);
+    const timeoutId  = setTimeout(() => controller.abort(), 600_000);
+
+    const CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB por chunk
+    const useChunks  = file.size > 80 * 1024 * 1024;
 
     try {
-      const formData = new FormData();
-      formData.append("sistema", sistema);
-      formData.append("uf",      uf);
-      formData.append("cidade",  cidade);
-      formData.append("regime",  regime);
-      formData.append("arquivo", file, file.name);
+      let data: any;
 
-      const res  = await fetch(`${WORKER_DIRECT}/api/processar`, {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
+      if (useChunks) {
+        // Upload em chunks para arquivos > 80 MB (evita limite de 100 MB do Render/Cloudflare)
+        const jobId       = crypto.randomUUID();
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        setLogs([`[Portal] Enviando ${file.name} (${fileMB} MB) em ${totalChunks} parte(s)...`]);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const start    = i * CHUNK_SIZE;
+          const end      = Math.min(start + CHUNK_SIZE, file.size);
+          const chunk    = file.slice(start, end);
+          const chunkMB  = ((end - start) / 1024 / 1024).toFixed(0);
+          setLogs(l => [
+            ...l.filter(x => !x.startsWith("[Portal] Enviando parte")),
+            `[Portal] Enviando parte ${i + 1}/${totalChunks} (${chunkMB} MB)...`,
+          ]);
+
+          const chunkRes = await fetch(`${WORKER_DIRECT}/api/chunk/${jobId}/${i}`, {
+            method:  "POST",
+            body:    chunk,
+            headers: { "Content-Type": "application/octet-stream" },
+            signal:  controller.signal,
+          });
+          if (!chunkRes.ok) throw new Error(`Chunk ${i + 1} falhou: HTTP ${chunkRes.status}`);
+        }
+
+        setLogs(l => [...l, "[Portal] Finalizando e iniciando migração..."]);
+        const finRes = await fetch(`${WORKER_DIRECT}/api/finalize/${jobId}`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ sistema, uf, cidade, regime, filename: file.name }),
+          signal:  controller.signal,
+        });
+        data = await finRes.json();
+
+      } else {
+        setLogs([`[Portal] Enviando arquivo ${file.name} (${fileMB} MB)... aguarde`]);
+        const formData = new FormData();
+        formData.append("sistema", sistema);
+        formData.append("uf",      uf);
+        formData.append("cidade",  cidade);
+        formData.append("regime",  regime);
+        formData.append("arquivo", file, file.name);
+
+        const res = await fetch(`${WORKER_DIRECT}/api/processar`, {
+          method: "POST",
+          body:   formData,
+          signal: controller.signal,
+        });
+        data = await res.json();
+      }
+
       clearTimeout(timeoutId);
-      const data = await res.json();
 
       if (data.jobId) {
         setJobId(data.jobId);
@@ -221,8 +262,8 @@ export default function Home() {
       setStatus("ERRO");
       if (err?.name === "AbortError") {
         setLogs(l => [...l,
-          "⚠ Timeout: o arquivo demorou mais de 3 min para ser enviado.",
-          "Tente um arquivo menor ou verifique sua conexão.",
+          "⚠ Timeout: o arquivo demorou mais de 10 min para ser enviado.",
+          "Verifique sua conexão e tente novamente.",
         ]);
       } else {
         setLogs(l => [...l,

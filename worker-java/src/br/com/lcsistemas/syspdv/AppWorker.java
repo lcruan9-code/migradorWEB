@@ -37,7 +37,8 @@ public class AppWorker {
     private static final int    PORT = resolvePort();
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    static final Map<String, JobState> JOBS = new ConcurrentHashMap<>();
+    static final Map<String, JobState> JOBS      = new ConcurrentHashMap<>();
+    static final Map<String, Path>     CHUNK_DIRS = new ConcurrentHashMap<>();
 
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
@@ -48,6 +49,8 @@ public class AppWorker {
         server.createContext("/api/download",  new DownloadHandler());
         server.createContext("/api/cidades",   new CidadesHandler());
         server.createContext("/api/estados",   new EstadosHandler());
+        server.createContext("/api/chunk",     new ChunkHandler());
+        server.createContext("/api/finalize",  new FinalizeHandler());
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         System.out.println("[AppWorker] Rodando em http://localhost:" + PORT);
@@ -685,6 +688,141 @@ public class AppWorker {
             }
             sb.append("]");
             respond(ex, 200, sb.toString());
+        }
+    }
+
+    // =========================================================================
+    //  POST /api/chunk/{jobId}/{index}  — recebe um chunk (octet-stream)
+    // =========================================================================
+
+    static class ChunkHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange ex) throws IOException {
+            addCors(ex);
+            if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+                ex.sendResponseHeaders(204, -1); return;
+            }
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                respond(ex, 405, err("Método não permitido")); return;
+            }
+            // Path: /api/chunk/{jobId}/{index}
+            String[] parts = ex.getRequestURI().getPath().split("/");
+            if (parts.length < 5) { respond(ex, 400, err("Path inválido: /api/chunk/{jobId}/{index}")); return; }
+            String jobId = parts[3];
+            int index;
+            try { index = Integer.parseInt(parts[4]); }
+            catch (NumberFormatException e) { respond(ex, 400, err("Índice de chunk inválido")); return; }
+
+            try {
+                Path chunkDir = CHUNK_DIRS.computeIfAbsent(jobId, id -> {
+                    try {
+                        Path base = resolverWorkDir();
+                        Path dir  = Files.createTempDirectory(base, "chunks-");
+                        dir.toFile().setReadable(true, false);
+                        dir.toFile().setExecutable(true, false);
+                        return dir;
+                    } catch (IOException e2) { throw new RuntimeException(e2); }
+                });
+
+                Path chunkFile = chunkDir.resolve(String.format("chunk_%05d", index));
+                long written = 0;
+                try (OutputStream out = new FileOutputStream(chunkFile.toFile())) {
+                    byte[] buf = new byte[65536];
+                    InputStream in = ex.getRequestBody();
+                    int n;
+                    while ((n = in.read(buf)) != -1) { out.write(buf, 0, n); written += n; }
+                }
+                respond(ex, 200, "{\"chunk\":" + index + ",\"size\":" + written + "}");
+            } catch (Exception e) {
+                e.printStackTrace();
+                respond(ex, 500, err(e.getMessage()));
+            }
+        }
+    }
+
+    // =========================================================================
+    //  POST /api/finalize/{jobId}  — reassembla chunks e inicia migração
+    // =========================================================================
+
+    static class FinalizeHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange ex) throws IOException {
+            addCors(ex);
+            if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+                ex.sendResponseHeaders(204, -1); return;
+            }
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                respond(ex, 405, err("Método não permitido")); return;
+            }
+
+            String jobId = lastSegment(ex.getRequestURI().getPath());
+            Path chunkDir = CHUNK_DIRS.get(jobId);
+            if (chunkDir == null) { respond(ex, 404, err("Sessão de upload não encontrada: " + jobId)); return; }
+
+            try {
+                // Metadata via JSON: {"sistema","uf","cidade","regime","filename"}
+                com.fasterxml.jackson.databind.JsonNode body = JSON.readTree(ex.getRequestBody());
+                String sistema  = body.has("sistema")  ? body.get("sistema").asText()  : "syspdv";
+                String uf       = body.has("uf")       ? body.get("uf").asText()       : "PA";
+                String cidade   = body.has("cidade")   ? body.get("cidade").asText()   : "";
+                String regime   = body.has("regime")   ? body.get("regime").asText()   : "SIMPLES";
+                String filename = body.has("filename") ? body.get("filename").asText() : "banco.fdb";
+
+                // Ordena e reassembla chunks
+                java.io.File[] chunkFiles = chunkDir.toFile().listFiles(
+                    f -> f.getName().startsWith("chunk_"));
+                if (chunkFiles == null || chunkFiles.length == 0) {
+                    respond(ex, 400, err("Nenhum chunk recebido para jobId=" + jobId)); return;
+                }
+                java.util.Arrays.sort(chunkFiles, (a, b) -> a.getName().compareTo(b.getName()));
+
+                String safeName = filename.replaceAll("[^\\w.\\-]", "_");
+                if (safeName.isEmpty()) safeName = "upload.fdb";
+                Path fdbPath = chunkDir.resolve(safeName);
+
+                try (OutputStream out = new FileOutputStream(fdbPath.toFile())) {
+                    for (java.io.File chunk : chunkFiles) {
+                        try (InputStream in = new FileInputStream(chunk)) {
+                            byte[] buf = new byte[65536]; int n;
+                            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                        }
+                        chunk.delete();
+                    }
+                }
+                fdbPath.toFile().setReadable(true, false);
+
+                // Monta MultipartData artificial com os campos do formulário
+                MultipartData data = new MultipartData();
+                data.uf      = uf;
+                data.cidade  = cidade;
+                data.regime  = regime;
+                data.filename = filename;
+
+                JobState job = new JobState(jobId, chunkDir);
+                JOBS.put(jobId, job);
+                CHUNK_DIRS.remove(jobId);
+
+                // .FBK → restaura antes de migrar
+                Path finalPath = fdbPath;
+                String lname = filename.toLowerCase();
+                if (lname.endsWith(".fbk") || lname.endsWith(".gbk")) {
+                    String fdbName = filename.substring(0, filename.lastIndexOf('.')) + ".fdb";
+                    Path restoredPath = chunkDir.resolve(fdbName);
+                    job.addLog("[Worker] Arquivo .FBK detectado — iniciando restauração gbak...");
+                    restaurarFbk(fdbPath, restoredPath, job);
+                    finalPath = restoredPath;
+                }
+
+                iniciarMigracao(jobId, job, sistema, finalPath.toString(), data);
+
+                ObjectNode resp = JSON.createObjectNode();
+                resp.put("jobId", jobId);
+                respond(ex, 200, JSON.writeValueAsString(resp));
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                respond(ex, 500, err(e.getMessage()));
+            }
         }
     }
 
