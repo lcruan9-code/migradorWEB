@@ -189,6 +189,12 @@ public class MigracaoEngine {
                     + config.getFbHost() + ":" + config.getFbPorta() + "...");
                 GerenciadorFirebird.garantirConectividade(config, logCallback);
 
+                // syspdv usa ODS 11.2 (FB 2.5) — converter para ODS 12.2 antes de conectar
+                if ("syspdv".equalsIgnoreCase(config.getSistema())) {
+                    log("[2.5/5] syspdv detectado: convertendo banco ODS 11.2 → 12.2 via gbak...");
+                    realizarGbakConversao(logCallback);
+                }
+
                 log("[3/5] Conectando ao banco de origem (Firebird)...");
                 origemConn = conectarOrigemComAutoRetry(logCallback);
                 origemConn.setAutoCommit(true);
@@ -384,6 +390,107 @@ public class MigracaoEngine {
 
         throw new Exception("Não foi possível conectar ao banco Firebird após "
             + MAX_TENTATIVAS_ODS + " tentativas.");
+    }
+
+    // ── Conversão ODS 11.2 → 12.2 via gbak (para syspdv / Firebird 2.5) ─────────
+
+    /**
+     * Usa gbak25 com libfbembed (FB 2.5 embedded) para fazer backup do banco ODS 11.2,
+     * depois restaura via FB 3.0 criando um banco ODS 12.2 que Jaybird consegue abrir.
+     * Atualiza config.fbArquivo para apontar ao banco restaurado.
+     */
+    private void realizarGbakConversao(GerenciadorFirebird.LogCallback logCallback)
+            throws Exception {
+
+        String origPath = config.getFbArquivo();
+        // Remove prefixo host: caso venha "localhost:/path" — gbak embedded usa caminho direto
+        if (origPath.contains(":")) {
+            origPath = origPath.substring(origPath.lastIndexOf(':') + 1);
+        }
+
+        String fbkPath      = origPath + ".bak.fbk";
+        String restoredPath = origPath + ".fb30.fdb";
+
+        // Limpa arquivos de tentativas anteriores
+        new java.io.File(fbkPath).delete();
+        new java.io.File(restoredPath).delete();
+
+        // ── Passo 1: backup via gbak25 + libfbembed (lê ODS 11.2 sem server) ────
+        log("[gbak] 1/2 — backup ODS 11.2 com FB 2.5 embedded");
+        log("[gbak]   entrada : " + origPath);
+        log("[gbak]   backup  : " + fbkPath);
+        {
+            ProcessBuilder pb = new ProcessBuilder(
+                "/opt/fb25/bin/gbak25",
+                "-b",
+                "-user",     "SYSDBA",
+                "-password", "masterkey",
+                origPath, fbkPath
+            );
+            pb.environment().put("LD_LIBRARY_PATH", "/opt/fb25/lib");
+            pb.environment().put("FIREBIRD",         "/opt/fb25");
+            pb.environment().put("FIREBIRD_TMP",     "/tmp");
+            pb.environment().put("ISC_USER",         "SYSDBA");
+            pb.environment().put("ISC_PASSWORD",     "masterkey");
+            pb.environment().put("HOME",             "/tmp");
+            pb.redirectErrorStream(true);
+
+            Process proc = pb.start();
+            String out = new String(proc.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8);
+            int exit = proc.waitFor();
+
+            if (!out.isEmpty()) {
+                String trimmed = out.length() > 1500
+                    ? out.substring(0, 1000) + "\n...\n" + out.substring(out.length() - 400)
+                    : out;
+                log("[gbak] " + trimmed.trim());
+            }
+
+            if (exit != 0 || !new java.io.File(fbkPath).exists()) {
+                throw new Exception(
+                    "gbak25 -backup falhou (exit=" + exit + "). "
+                    + "Verifique se /opt/fb25/bin/gbak25 existe e o arquivo .fdb é acessível.");
+            }
+            log("[gbak] ✅ Backup gerado: " + new java.io.File(fbkPath).length() + " bytes");
+        }
+
+        // ── Passo 2: restaurar via gbak FB 3.0 (cria ODS 12.2) ──────────────────
+        log("[gbak] 2/2 — restaurando como ODS 12.2 via FB 3.0");
+        log("[gbak]   restaurado: " + restoredPath);
+        {
+            ProcessBuilder pb = new ProcessBuilder(
+                "/usr/bin/gbak",
+                "-create",
+                "-replace",
+                "-user",     "SYSDBA",
+                "-password", "masterkey",
+                fbkPath,
+                "localhost:" + restoredPath
+            );
+            pb.redirectErrorStream(true);
+
+            Process proc = pb.start();
+            String out = new String(proc.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8);
+            int exit = proc.waitFor();
+
+            if (!out.isEmpty()) {
+                String trimmed = out.length() > 1500
+                    ? out.substring(0, 1000) + "\n...\n" + out.substring(out.length() - 400)
+                    : out;
+                log("[gbak] " + trimmed.trim());
+            }
+
+            if (exit != 0 || !new java.io.File(restoredPath).exists()) {
+                throw new Exception("gbak -create falhou (exit=" + exit + ")");
+            }
+            log("[gbak] ✅ Banco restaurado: " + new java.io.File(restoredPath).length() + " bytes");
+        }
+
+        // ── Aponta config para o banco ODS 12.2 ──────────────────────────────────
+        config.setFbArquivo(restoredPath);
+        log("[gbak] ✅ Conversão concluída — conectando via FB 3.0 (ODS 12.2)");
     }
 
     // ── Helpers de notificação ────────────────────────────────────────────────
