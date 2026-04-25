@@ -325,71 +325,15 @@ public class MigracaoEngine {
     }
 
     /**
-     * Tenta conectar ao banco Firebird com retry automático por incompatibilidade de ODS.
+     * Conecta ao banco Firebird.
      *
-     * <p>Fluxo:
-     * <ol>
-     *   <li>Tenta a conexão JDBC normalmente.</li>
-     *   <li>Se falhar com erro ODS ({@code isc_wrong_ods / 335544379}):
-     *       <ul>
-     *         <li>Extrai a versão ODS do banco pela mensagem do erro.</li>
-     *         <li>Pede ao {@link GerenciadorFirebird} para parar o Firebird atual
-     *             e iniciar a versão compatível.</li>
-     *         <li>Retenta a conexão.</li>
-     *       </ul>
-     *   </li>
-     *   <li>Erros não-ODS são propagados imediatamente.</li>
-     *   <li>Máximo de {@code MAX_TENTATIVAS_ODS} trocas de versão antes de desistir.</li>
-     * </ol>
-     *
-     * @param logCallback Callback de log passado ao GerenciadorFirebird.
-     * @return Conexão JDBC aberta e válida com o banco Firebird.
-     * @throws Exception Se não for possível conectar após todas as tentativas.
+     * <p>Para syspdv, {@link #realizarGbakConversao} já foi chamado antes deste método,
+     * convertendo o banco de ODS 11.2 (FB 2.5) para ODS 12.2 (FB 3.0) via gbak embedded.
+     * Todos os sistemas conectam ao Firebird 3.0 na porta 3050 com Legacy_Auth.
      */
     private Connection conectarOrigemComAutoRetry(
             GerenciadorFirebird.LogCallback logCallback) throws Exception {
-
-        // syspdv → conecta no Firebird 2.5 (porta 3051) — sem necessidade de troca de versão
-        // outros sistemas → conecta no Firebird 3.0 (porta 3050) — ODS detection abaixo
-        final int MAX_TENTATIVAS_ODS = 5;
-
-        for (int tentativa = 1; tentativa <= MAX_TENTATIVAS_ODS; tentativa++) {
-            try {
-                return conectarFirebird();
-
-            } catch (SQLException e) {
-
-                VersaoFirebird versaoNecessaria =
-                    GerenciadorFirebird.detectarVersaoPorODS(e.getMessage());
-
-                if (versaoNecessaria != VersaoFirebird.DESCONHECIDA
-                        && tentativa < MAX_TENTATIVAS_ODS) {
-
-                    log("⚠ ODS incompatível: banco criado em " + versaoNecessaria
-                        + " — Firebird atual não suporta este formato.");
-                    log("   Auto-ajustando para " + versaoNecessaria
-                        + " (tentativa " + tentativa + "/" + MAX_TENTATIVAS_ODS + ")...");
-
-                    boolean trocou = GerenciadorFirebird.trocarParaVersao(
-                        versaoNecessaria, config, logCallback);
-
-                    if (!trocou) {
-                        throw new Exception(
-                            "Banco requer " + versaoNecessaria
-                            + ", mas nenhuma instalação compatível foi encontrada.\n"
-                            + "Erro original: " + e.getMessage());
-                    }
-
-                    log("   Retentando conexão com " + versaoNecessaria + "...");
-
-                } else {
-                    throw e;
-                }
-            }
-        }
-
-        throw new Exception("Não foi possível conectar ao banco Firebird após "
-            + MAX_TENTATIVAS_ODS + " tentativas.");
+        return conectarFirebird();
     }
 
     // ── Conversão ODS 11.2 → 12.2 via gbak (para syspdv / Firebird 2.5) ─────────
