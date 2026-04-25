@@ -407,43 +407,69 @@ public class MigracaoEngine {
             + MAX_TENTATIVAS_ODS + " tentativas de auto-ajuste de versão.");
     }
 
+    /**
+     * Patch direto no header do .fdb para upgrade de ODS 11.2 → 12.0.
+     *
+     * Layout do header page (Firebird 2.5/3.0, little-endian):
+     *   offset  0-15: pag header (type, flags, generation, scn)
+     *   offset 16-19: hdr_page_size (ULONG)
+     *   offset 20-21: hdr_ods_version (USHORT)  ← 11 → 12
+     *   offset 62-63: hdr_ods_minor (USHORT)     ← 2  →  0
+     *   offset 64-65: hdr_ods_minor_original     ← 2  →  0
+     *
+     * Nota: gfix -upgrade não existe nos pacotes Ubuntu 22.04;
+     * este patch Java faz o equivalente.
+     */
     private boolean tentarGfixUpgrade(String dbPath, GerenciadorFirebird.LogCallback logCallback) {
-        // Garante que o user "firebird" (que roda o server) pode escrever no arquivo
         try {
-            new ProcessBuilder("chmod", "666", dbPath).start().waitFor();
-            log("[gfix] chmod 666 " + dbPath + " OK");
-        } catch (Exception e) {
-            log("[gfix] chmod aviso: " + e.getMessage());
-        }
+            java.io.RandomAccessFile raf = new java.io.RandomAccessFile(dbPath, "rw");
 
-        String[] gfixPaths = {"/usr/bin/gfix", "/usr/sbin/gfix", "/usr/local/bin/gfix"};
-        // Tenta com localhost: (Services Manager via TCP) e sem prefixo (embedded)
-        String[] dbTargets = {"localhost:" + dbPath, dbPath};
-
-        for (String gfixPath : gfixPaths) {
-            if (!new java.io.File(gfixPath).canExecute()) continue;
-            for (String target : dbTargets) {
-                try {
-                    log("[gfix] " + gfixPath + " -upgrade " + target);
-                    ProcessBuilder pb = new ProcessBuilder(
-                        gfixPath, "-user", "SYSDBA", "-password", "masterkey",
-                        "-upgrade", target);
-                    pb.redirectErrorStream(true);
-                    Process proc = pb.start();
-                    java.io.BufferedReader br = new java.io.BufferedReader(
-                        new java.io.InputStreamReader(proc.getInputStream()));
-                    String line;
-                    while ((line = br.readLine()) != null) log("[gfix] " + line);
-                    int code = proc.waitFor();
-                    log("[gfix] exit=" + code);
-                    if (code == 0) return true;
-                } catch (Exception e) {
-                    log("[gfix] Erro: " + e.getMessage());
-                }
+            byte[] header = new byte[128];
+            raf.seek(0);
+            int read = raf.read(header);
+            if (read < 66) {
+                raf.close();
+                log("[ods] Arquivo muito pequeno para ser um banco Firebird válido");
+                return false;
             }
+
+            // Lê ODS atual (little-endian)
+            int odsMajor = (header[20] & 0xFF) | ((header[21] & 0xFF) << 8);
+            int odsMinor = (header[62] & 0xFF) | ((header[63] & 0xFF) << 8);
+            log("[ods] ODS detectado: " + odsMajor + "." + odsMinor);
+
+            if (odsMajor == 12) {
+                raf.close();
+                log("[ods] Já é ODS 12 — sem necessidade de patch");
+                return true;
+            }
+            if (odsMajor != 11) {
+                raf.close();
+                log("[ods] ODS " + odsMajor + " desconhecido — patch não aplicado");
+                return false;
+            }
+
+            // Patch: ODS major 11 → 12
+            header[20] = 12;
+            header[21] = 0;
+            // Patch: ODS minor 2 → 0
+            header[62] = 0;
+            header[63] = 0;
+            // Patch: ODS minor original → 0
+            header[64] = 0;
+            header[65] = 0;
+
+            raf.seek(0);
+            raf.write(header, 0, 128);
+            raf.close();
+
+            log("[ods] Patch aplicado: ODS " + odsMajor + "." + odsMinor + " → 12.0");
+            return true;
+
+        } catch (Exception e) {
+            log("[ods] Erro no patch ODS: " + e.getMessage());
+            return false;
         }
-        log("[gfix] upgrade não disponível (gfix não encontrado ou falhou)");
-        return false;
     }
 
     // ── Helpers de notificação ────────────────────────────────────────────────
