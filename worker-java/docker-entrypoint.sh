@@ -3,97 +3,100 @@ set -e
 
 echo "[Entrypoint] === Iniciando container do Migrador Web ==="
 
-# Prepara diretórios necessários pelo Firebird
-mkdir -p /var/run/firebird/3.0
-chown -R firebird:firebird /var/run/firebird/3.0 2>/dev/null || true
-chmod 777 /var/run/firebird/3.0
-mkdir -p /tmp/firebird
-chmod 777 /tmp/firebird
-
-# Diagnóstico: quais binários existem
-echo "[Entrypoint] --- Binários Firebird ---"
-for b in /usr/sbin/firebird /usr/sbin/fbguard /usr/sbin/fb_inet_server \
-          /usr/lib/firebird/3.0/bin/fbguard /usr/lib/firebird/3.0/bin/fb_inet_server \
-          /usr/bin/gbak /usr/bin/gsec /usr/bin/isql-fb; do
-    [ -f "$b" ] && echo "[Entrypoint]   EXISTE: $b ($(ls -la "$b" | awk '{print $1,$3,$4}'))" || true
+# ── Diretórios de PID para ambas as versões do Firebird ──────────────────────
+for dir in /var/run/firebird/3.0 /var/run/firebird/2.5; do
+    mkdir -p "$dir"
+    chown -R firebird:firebird "$dir" 2>/dev/null || true
+    chmod 777 "$dir"
 done
+mkdir -p /tmp/firebird && chmod 777 /tmp/firebird
 
-echo "[Entrypoint] --- Security Database ---"
-for db in /var/lib/firebird/3.0/system/security3.fdb \
-           /var/lib/firebird/3.0/security/security3.fdb \
-           /var/lib/firebird/3.0/security3.fdb; do
-    [ -f "$db" ] && echo "[Entrypoint]   OK: $db" \
-                 || echo "[Entrypoint]   FALTA: $db"
-done
-
-echo "[Entrypoint] Iniciando Firebird 3.0..."
-
-# Método 1: init.d (caminho canônico Ubuntu)
-echo "[Entrypoint] Tentando /etc/init.d/firebird3.0 start..."
-/etc/init.d/firebird3.0 start 2>&1 && echo "[Entrypoint] init.d: OK" \
-                                    || echo "[Entrypoint] init.d: erro (continuando)"
+# ── Firebird 3.0 na porta 3050 (para GDoor, Host, Clipp, etc.) ───────────────
+echo "[Entrypoint] Iniciando Firebird 3.0 (porta 3050)..."
+/etc/init.d/firebird3.0 start 2>&1 && echo "[Entrypoint] FB3.0 init.d: OK" \
+                                    || echo "[Entrypoint] FB3.0 init.d: erro (continuando)"
 sleep 3
 
-if nc -z localhost 3050 2>/dev/null; then
-    echo "[Entrypoint] ✅ Firebird ativo após init.d"
-else
-    echo "[Entrypoint] Porta 3050 ainda fechada — tentando start-stop-daemon direto..."
-
-    # Método 2: start-stop-daemon como init.d faz internamente
-    if [ -x /usr/sbin/firebird ]; then
+if ! nc -z localhost 3050 2>/dev/null; then
+    echo "[Entrypoint] Tentando start-stop-daemon para FB3.0..."
+    if [ -x /usr/sbin/firebird3.0 ]; then
         start-stop-daemon --start --background \
             --chuid firebird:firebird \
             --make-pidfile --pidfile /var/run/firebird/3.0/firebird.pid \
-            --exec /usr/sbin/firebird -- -daemon 2>&1 \
-          && echo "[Entrypoint] start-stop-daemon: OK" \
-          || echo "[Entrypoint] start-stop-daemon: erro (continuando)"
+            --exec /usr/sbin/firebird3.0 -- -daemon 2>&1 \
+          && echo "[Entrypoint] FB3.0 start-stop-daemon: OK" \
+          || echo "[Entrypoint] FB3.0 start-stop-daemon: erro"
         sleep 4
     fi
-
-    # Método 3: su direto em foreground (fallback mais simples)
     if ! nc -z localhost 3050 2>/dev/null && [ -x /usr/sbin/firebird ]; then
-        echo "[Entrypoint] Tentando su firebird foreground..."
         su -s /bin/sh firebird -c '/usr/sbin/firebird 2>&1' &
-        sleep 5
-    fi
-
-    # Método 4: fbguard se existir
-    if ! nc -z localhost 3050 2>/dev/null && [ -x /usr/sbin/fbguard ]; then
-        echo "[Entrypoint] Tentando fbguard..."
-        su -s /bin/sh firebird -c '/usr/sbin/fbguard 2>&1' &
         sleep 4
     fi
 fi
 
-# Aguarda até 45s pela porta 3050
-MAX_WAIT=45
-count=0
-FB_OK=false
-while [ "$count" -lt "$MAX_WAIT" ]; do
-    if nc -z localhost 3050 2>/dev/null; then
-        FB_OK=true
-        break
-    fi
-    count=$((count + 1))
-    echo "[Entrypoint] Aguardando porta 3050... ($count/${MAX_WAIT}s)"
-    sleep 1
+# Aguarda porta 3050
+count=0; FB30_OK=false
+while [ "$count" -lt 30 ]; do
+    nc -z localhost 3050 2>/dev/null && FB30_OK=true && break
+    count=$((count+1)); sleep 1
+done
+if [ "$FB30_OK" = "true" ]; then
+    echo "[Entrypoint] ✅ Firebird 3.0 pronto na porta 3050"
+    # Normaliza SYSDBA
+    /usr/bin/gsec -user SYSDBA -password "" -modify SYSDBA -pw masterkey 2>/dev/null && \
+        echo "[Entrypoint] ✅ FB3.0 SYSDBA: senha vazia → masterkey" || \
+        echo "[Entrypoint]    FB3.0 SYSDBA: já com masterkey (ou não precisou)"
+else
+    echo "[Entrypoint] ⚠ Firebird 3.0 não respondeu na porta 3050"
+fi
+
+# ── Firebird 2.5 na porta 3051 (para syspdv / ODS 11.2) ─────────────────────
+echo "[Entrypoint] Iniciando Firebird 2.5 (porta 3051)..."
+/etc/init.d/firebird2.5-superserver start 2>&1 && echo "[Entrypoint] FB2.5 init.d: OK" \
+                                               || echo "[Entrypoint] FB2.5 init.d: erro (continuando)"
+sleep 3
+
+if ! nc -z localhost 3051 2>/dev/null; then
+    echo "[Entrypoint] Tentando start-stop-daemon para FB2.5..."
+    for bin in /usr/sbin/firebird2.5-superserver /usr/lib/firebird/2.5/bin/fbguard; do
+        [ -x "$bin" ] || continue
+        start-stop-daemon --start --background \
+            --chuid firebird:firebird \
+            --make-pidfile --pidfile /var/run/firebird/2.5/firebird.pid \
+            --exec "$bin" 2>&1 \
+          && echo "[Entrypoint] FB2.5 start-stop-daemon ($bin): OK" \
+          || echo "[Entrypoint] FB2.5 start-stop-daemon ($bin): erro"
+        sleep 4
+        nc -z localhost 3051 2>/dev/null && break
+    done
+fi
+
+# Aguarda porta 3051
+count=0; FB25_OK=false
+while [ "$count" -lt 30 ]; do
+    nc -z localhost 3051 2>/dev/null && FB25_OK=true && break
+    count=$((count+1)); sleep 1
 done
 
-if [ "$FB_OK" = "true" ]; then
-    echo "[Entrypoint] ✅ Firebird 3.0 pronto na porta 3050"
-    # Normaliza SYSDBA=masterkey via SRP (Ubuntu instala Firebird3 com senha SRP vazia)
-    if /usr/bin/gsec -user SYSDBA -password "" -modify SYSDBA -pw masterkey 2>/dev/null; then
-        echo "[Entrypoint] ✅ SYSDBA: senha vazia → masterkey (SRP)"
-    elif /usr/bin/gsec -user SYSDBA -password masterkey -display SYSDBA 2>/dev/null | grep -qi sysdba; then
-        echo "[Entrypoint] ✅ SYSDBA já autenticado com masterkey"
-    else
-        echo "[Entrypoint] ⚠ Não foi possível confirmar senha SYSDBA"
-    fi
+if [ "$FB25_OK" = "true" ]; then
+    echo "[Entrypoint] ✅ Firebird 2.5 pronto na porta 3051"
+    # Normaliza SYSDBA para FB2.5 (security2.fdb — legacy auth)
+    for gsec_bin in /usr/bin/gsec /usr/lib/firebird/2.5/bin/gsec; do
+        [ -x "$gsec_bin" ] || continue
+        if $gsec_bin -host localhost -port 3051 -user SYSDBA -password "" \
+                -modify SYSDBA -pw masterkey 2>/dev/null; then
+            echo "[Entrypoint] ✅ FB2.5 SYSDBA: senha vazia → masterkey"
+        else
+            echo "[Entrypoint]    FB2.5 SYSDBA: tentando confirmar com masterkey..."
+            $gsec_bin -host localhost -port 3051 -user SYSDBA -password masterkey \
+                -display SYSDBA 2>/dev/null | grep -qi sysdba && \
+                echo "[Entrypoint] ✅ FB2.5 SYSDBA já com masterkey" || \
+                echo "[Entrypoint] ⚠ FB2.5 SYSDBA: não confirmado"
+        fi
+        break
+    done
 else
-    echo "[Entrypoint] ⚠ Firebird não respondeu em ${MAX_WAIT}s"
-    echo "[Entrypoint]   Processos Firebird:"
-    ps aux | grep -Ei 'firebird|fbguard|fb_inet' | grep -v grep || echo "  (nenhum)"
-    echo "[Entrypoint]   O GerenciadorFirebird Java vai tentar iniciar o binário via /app/FIREBIRD/"
+    echo "[Entrypoint] ⚠ Firebird 2.5 não respondeu na porta 3051 — syspdv não funcionará"
 fi
 
 echo "[Entrypoint] Iniciando AppWorker Java na porta ${PORT:-8080}..."

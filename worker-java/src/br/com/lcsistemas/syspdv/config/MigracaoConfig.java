@@ -111,11 +111,18 @@ public class MigracaoConfig {
 
     /**
      * Monta a JDBC URL para o Firebird (Jaybird).
-     * Formato: jdbc:firebirdsql://host:porta/arquivo
+     *
+     * syspdv → Firebird 2.5 na porta 3051 (ODS 11.2, sem SRP)
+     * outros → Firebird 3.0 na porta fbPorta/3050 (ODS 12+, Legacy_Auth)
      */
     public String buildUrlFirebird() {
-        return "jdbc:firebirdsql://" + fbHost + ":" + fbPorta + "/" + fbArquivo
-             + "?charSet=Cp1252&authPlugins=Legacy_Auth";
+        boolean isSyspdv = "syspdv".equalsIgnoreCase(sistema);
+        String porta = isSyspdv ? "3051" : fbPorta;
+        // FB 2.5 não suporta SRP — Jaybird negocia legacy auth automaticamente
+        // FB 3.0 precisa forçar Legacy_Auth (Ubuntu instala SYSDBA sem SRP)
+        String auth = isSyspdv ? "" : "&authPlugins=Legacy_Auth";
+        return "jdbc:firebirdsql://" + fbHost + ":" + porta + "/" + fbArquivo
+             + "?charSet=Cp1252" + auth;
     }
 
     /**

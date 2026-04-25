@@ -343,15 +343,9 @@ public class MigracaoEngine {
     private Connection conectarOrigemComAutoRetry(
             GerenciadorFirebird.LogCallback logCallback) throws Exception {
 
-        // syspdv SEMPRE usa Firebird 2.5 (ODS 11.2) — faz upgrade antes de tentar conectar
-        if ("syspdv".equalsIgnoreCase(config.getSistema())) {
-            log("[syspdv] Banco Firebird 2.5 detectado — executando upgrade ODS antes de conectar...");
-            tentarGfixUpgrade(config.getFbArquivo(), logCallback);
-        }
-
-        // Máximo de trocas de versão (nunca trava em loop infinito)
+        // syspdv → conecta no Firebird 2.5 (porta 3051) — sem necessidade de troca de versão
+        // outros sistemas → conecta no Firebird 3.0 (porta 3050) — ODS detection abaixo
         final int MAX_TENTATIVAS_ODS = 5;
-        boolean gfixTentado = "syspdv".equalsIgnoreCase(config.getSistema()); // já tentou acima
 
         for (int tentativa = 1; tentativa <= MAX_TENTATIVAS_ODS; tentativa++) {
             try {
@@ -359,22 +353,11 @@ public class MigracaoEngine {
 
             } catch (SQLException e) {
 
-                // Tenta identificar se é erro de ODS incompatível
                 VersaoFirebird versaoNecessaria =
                     GerenciadorFirebird.detectarVersaoPorODS(e.getMessage());
 
                 if (versaoNecessaria != VersaoFirebird.DESCONHECIDA
                         && tentativa < MAX_TENTATIVAS_ODS) {
-
-                    // ── ODS incompatível: tentar gfix -upgrade antes de trocar binário ──
-                    if (!gfixTentado) {
-                        gfixTentado = true;
-                        log("⚠ ODS incompatível (" + versaoNecessaria + ") — tentando gfix -upgrade...");
-                        if (tentarGfixUpgrade(config.getFbArquivo(), logCallback)) {
-                            log("   gfix OK — retentando conexão...");
-                            continue;
-                        }
-                    }
 
                     log("⚠ ODS incompatível: banco criado em " + versaoNecessaria
                         + " — Firebird atual não suporta este formato.");
@@ -387,89 +370,20 @@ public class MigracaoEngine {
                     if (!trocou) {
                         throw new Exception(
                             "Banco requer " + versaoNecessaria
-                            + ", mas nenhuma instalação compatível foi iniciada.\n"
-                            + "Verifique se a pasta FIREBIRD do projeto contém "
-                            + versaoNecessaria + ".\n"
+                            + ", mas nenhuma instalação compatível foi encontrada.\n"
                             + "Erro original: " + e.getMessage());
                     }
 
                     log("   Retentando conexão com " + versaoNecessaria + "...");
-                    // Continua o loop → próxima tentativa com a versão correta
 
                 } else {
-                    // Outro tipo de erro ou esgotou tentativas → propaga
                     throw e;
                 }
             }
         }
 
         throw new Exception("Não foi possível conectar ao banco Firebird após "
-            + MAX_TENTATIVAS_ODS + " tentativas de auto-ajuste de versão.");
-    }
-
-    /**
-     * Patch direto no header do .fdb para upgrade de ODS 11.2 → 12.0.
-     *
-     * Layout do header page (Firebird 2.5/3.0, little-endian):
-     *   offset  0-15: pag header (type, flags, generation, scn)
-     *   offset 16-19: hdr_page_size (ULONG)
-     *   offset 20-21: hdr_ods_version (USHORT)  ← 11 → 12
-     *   offset 62-63: hdr_ods_minor (USHORT)     ← 2  →  0
-     *   offset 64-65: hdr_ods_minor_original     ← 2  →  0
-     *
-     * Nota: gfix -upgrade não existe nos pacotes Ubuntu 22.04;
-     * este patch Java faz o equivalente.
-     */
-    private boolean tentarGfixUpgrade(String dbPath, GerenciadorFirebird.LogCallback logCallback) {
-        try {
-            java.io.RandomAccessFile raf = new java.io.RandomAccessFile(dbPath, "rw");
-
-            byte[] header = new byte[128];
-            raf.seek(0);
-            int read = raf.read(header);
-            if (read < 66) {
-                raf.close();
-                log("[ods] Arquivo muito pequeno para ser um banco Firebird válido");
-                return false;
-            }
-
-            // Lê ODS atual (little-endian)
-            int odsMajor = (header[20] & 0xFF) | ((header[21] & 0xFF) << 8);
-            int odsMinor = (header[62] & 0xFF) | ((header[63] & 0xFF) << 8);
-            log("[ods] ODS detectado: " + odsMajor + "." + odsMinor);
-
-            if (odsMajor == 12) {
-                raf.close();
-                log("[ods] Já é ODS 12 — sem necessidade de patch");
-                return true;
-            }
-            if (odsMajor != 11) {
-                raf.close();
-                log("[ods] ODS " + odsMajor + " desconhecido — patch não aplicado");
-                return false;
-            }
-
-            // Patch: ODS major 11 → 12
-            header[20] = 12;
-            header[21] = 0;
-            // Patch: ODS minor 2 → 0
-            header[62] = 0;
-            header[63] = 0;
-            // Patch: ODS minor original → 0
-            header[64] = 0;
-            header[65] = 0;
-
-            raf.seek(0);
-            raf.write(header, 0, 128);
-            raf.close();
-
-            log("[ods] Patch aplicado: ODS " + odsMajor + "." + odsMinor + " → 12.0");
-            return true;
-
-        } catch (Exception e) {
-            log("[ods] Erro no patch ODS: " + e.getMessage());
-            return false;
-        }
+            + MAX_TENTATIVAS_ODS + " tentativas.");
     }
 
     // ── Helpers de notificação ────────────────────────────────────────────────
