@@ -402,6 +402,18 @@ public class MigracaoEngine {
         log("[gbak] 2/2 — restaurando como ODS 12.2 via FB 3.0");
         log("[gbak]   restaurado: " + restoredPath);
         {
+            // FB 3.0 server roda como user 'firebird'. O diretório chunks-XXXX foi
+            // criado pelo Java (root) com permissão 755. Precisamos de 777 para que
+            // o server possa criar o arquivo restaurado lá.
+            try {
+                String parentDir = new java.io.File(restoredPath).getParent();
+                new ProcessBuilder("chmod", "777", parentDir)
+                    .start().waitFor();
+                log("[gbak] chmod 777 " + parentDir);
+            } catch (Exception ex) {
+                log("[gbak] AVISO: não foi possível chmod no diretório pai: " + ex.getMessage());
+            }
+
             ProcessBuilder pb = new ProcessBuilder(
                 "/usr/bin/gbak",
                 "-create",

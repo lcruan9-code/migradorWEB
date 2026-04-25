@@ -100,7 +100,7 @@ public class AppWorker {
             if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
                 respond(ex, 405, err("Método não permitido")); return;
             }
-            respond(ex, 200, "{\"ok\":true,\"build\":\"2025-04-25-gbak-v7\"}");
+            respond(ex, 200, "{\"ok\":true,\"build\":\"2025-04-25-gbak-v8\"}");
         }
     }
 
