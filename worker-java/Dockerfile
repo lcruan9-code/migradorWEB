@@ -38,6 +38,15 @@ RUN set -eux; \
     find /usr/lib /lib -name 'libicudata.so.*' 2>/dev/null | xargs -I{} cp {} /fb25/lib/ || true; \
     find /usr/lib /lib -name 'libicui18n.so.*' 2>/dev/null | xargs -I{} cp {} /fb25/lib/ || true; \
     echo "=== ICU libs ===" && ls /fb25/lib/libicu* 2>/dev/null || echo "AVISO: sem ICU"; \
+    # Copia o diretório intl/ (libfbintl.so + fbintl.conf) — necessário para character sets
+    # (ISO8859_1, UTF-8, etc.). Sem ele: "CHARACTER SET X is not installed"
+    if [ -d "$FB_ROOT/intl" ]; then \
+        cp -r "$FB_ROOT/intl" /fb25/; \
+        echo "=== intl/ ===" && ls -la /fb25/intl/; \
+    else \
+        echo "AVISO: $FB_ROOT/intl não encontrado — buscando fbintl em outros locais"; \
+        find / -name 'fbintl*' 2>/dev/null; \
+    fi; \
     # security2.fdb: busca em toda a imagem (pode estar fora de $FB_ROOT)
     echo "=== Buscando security2.fdb ==="; \
     find / -name 'security2.fdb' 2>/dev/null || echo "security2.fdb não encontrado em lugar nenhum"; \
