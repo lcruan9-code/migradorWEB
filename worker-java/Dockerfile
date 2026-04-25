@@ -27,12 +27,12 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Configura Firebird 3.0:
-#   ServerMode = SuperServer → processo persistente ouvindo na porta 3050 (sem inetd)
-#   RemoteBindAddress = 0.0.0.0 → sobrescreve o "localhost" padrão — garante binding IPv4
-#   AuthServer/UserManager → autenticação legacy para Jaybird 4
-#   WireCrypt Disabled → simplifica conexão local
-#   DatabaseAccess Full → acessa qualquer path de .fdb
-RUN printf '\nServerMode = SuperServer\nRemoteBindAddress = 0.0.0.0\nAuthServer = Legacy_Auth, Srp256, Srp\nUserManager = Legacy_UserManager, Srp\nWireCrypt = Disabled\nDatabaseAccess = Full\n' \
+#   1. SUBSTITUI o RemoteBindAddress padrão (era "localhost" que resolve para ::1 IPv6 no Docker)
+#      por 0.0.0.0 (IPv4 all interfaces) para que Jaybird consiga conectar via 127.0.0.1
+#   2. Adiciona ServerMode = SuperServer (listener persistente sem inetd)
+#   3. Autenticação legacy para Jaybird 4 + WireCrypt disabled + DatabaseAccess full
+RUN sed -i 's/^RemoteBindAddress.*/RemoteBindAddress = 0.0.0.0/' /etc/firebird/3.0/firebird.conf && \
+    printf '\nServerMode = SuperServer\nAuthServer = Legacy_Auth, Srp256, Srp\nUserManager = Legacy_UserManager, Srp\nWireCrypt = Disabled\nDatabaseAccess = Full\n' \
     >> /etc/firebird/3.0/firebird.conf
 
 # Diretório de trabalho acessível tanto pelo Java (root) quanto pelo Firebird (user firebird)
