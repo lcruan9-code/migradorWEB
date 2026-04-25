@@ -33,16 +33,25 @@ RUN set -eux; \
     chmod +x /fb25/bin/gbak25; \
     # Copia todas as libs do diretório Firebird (libfbembed, libfbclient, etc.)
     find "$FB_ROOT/lib" -name '*.so*' | xargs -I{} cp {} /fb25/lib/; \
-    # Copia as libs ICU do sistema — jacobalberty não as embute no FB_ROOT/lib,
-    # ficam em /usr/lib. gbak25 precisa delas via LD_LIBRARY_PATH no runtime.
+    # Copia as libs ICU do sistema — jacobalberty não as embute no FB_ROOT/lib
     find /usr/lib /lib -name 'libicuuc.so.*'   2>/dev/null | xargs -I{} cp {} /fb25/lib/ || true; \
     find /usr/lib /lib -name 'libicudata.so.*' 2>/dev/null | xargs -I{} cp {} /fb25/lib/ || true; \
     find /usr/lib /lib -name 'libicui18n.so.*' 2>/dev/null | xargs -I{} cp {} /fb25/lib/ || true; \
-    echo "=== ICU libs copiadas ==="; \
-    ls /fb25/lib/libicu* 2>/dev/null || echo "AVISO: nenhuma lib ICU encontrada!"; \
-    # Security DB e message file (necessários para o embedded engine)
-    cp "$FB_ROOT/security2.fdb" /fb25/ 2>/dev/null || echo "security2.fdb não encontrado"; \
-    cp "$FB_ROOT/firebird.msg"  /fb25/ 2>/dev/null || echo "firebird.msg não encontrado"; \
+    echo "=== ICU libs ===" && ls /fb25/lib/libicu* 2>/dev/null || echo "AVISO: sem ICU"; \
+    # security2.fdb: busca em toda a imagem (pode estar fora de $FB_ROOT)
+    echo "=== Buscando security2.fdb ==="; \
+    find / -name 'security2.fdb' 2>/dev/null || echo "security2.fdb não encontrado em lugar nenhum"; \
+    SEC_DB=$(find / -name 'security2.fdb' 2>/dev/null | head -1); \
+    if [ -n "$SEC_DB" ]; then \
+        cp "$SEC_DB" /fb25/security2.fdb; \
+        chmod 666 /fb25/security2.fdb; \
+        echo "security2.fdb copiado de: $SEC_DB"; \
+    else \
+        echo "AVISO: security2.fdb não encontrado — modo embedded (root) não precisa dele"; \
+    fi; \
+    # firebird.msg: busca em toda a imagem
+    MSG=$(find / -name 'firebird.msg' 2>/dev/null | head -1); \
+    [ -n "$MSG" ] && cp "$MSG" /fb25/firebird.msg && echo "firebird.msg: $MSG" || echo "AVISO: firebird.msg não encontrado"; \
     echo "=== /fb25/bin/ ===" && ls -la /fb25/bin/; \
     echo "=== /fb25/lib/ ===" && ls -la /fb25/lib/; \
     echo "=== /fb25/ ===" && ls -la /fb25/

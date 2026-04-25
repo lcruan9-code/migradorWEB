@@ -364,18 +364,17 @@ public class MigracaoEngine {
         log("[gbak]   entrada : " + origPath);
         log("[gbak]   backup  : " + fbkPath);
         {
+            // Sem -user/-password: modo embedded com root usa credenciais do OS
+            // (root = SYSDBA no embedded) e bypassa validação contra security2.fdb.
+            // ISC_USER/ISC_PASSWORD também omitidos pelo mesmo motivo.
             ProcessBuilder pb = new ProcessBuilder(
                 "/opt/fb25/bin/gbak25",
                 "-b",
-                "-user",     "SYSDBA",
-                "-password", "masterkey",
                 origPath, fbkPath
             );
             pb.environment().put("LD_LIBRARY_PATH", "/opt/fb25/lib");
             pb.environment().put("FIREBIRD",         "/opt/fb25");
             pb.environment().put("FIREBIRD_TMP",     "/tmp");
-            pb.environment().put("ISC_USER",         "SYSDBA");
-            pb.environment().put("ISC_PASSWORD",     "masterkey");
             pb.environment().put("HOME",             "/tmp");
             pb.redirectErrorStream(true);
 
