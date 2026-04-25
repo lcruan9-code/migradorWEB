@@ -408,25 +408,38 @@ public class MigracaoEngine {
     }
 
     private boolean tentarGfixUpgrade(String dbPath, GerenciadorFirebird.LogCallback logCallback) {
+        // Garante que o user "firebird" (que roda o server) pode escrever no arquivo
+        try {
+            new ProcessBuilder("chmod", "666", dbPath).start().waitFor();
+            log("[gfix] chmod 666 " + dbPath + " OK");
+        } catch (Exception e) {
+            log("[gfix] chmod aviso: " + e.getMessage());
+        }
+
         String[] gfixPaths = {"/usr/bin/gfix", "/usr/sbin/gfix", "/usr/local/bin/gfix"};
+        // Tenta com localhost: (Services Manager via TCP) e sem prefixo (embedded)
+        String[] dbTargets = {"localhost:" + dbPath, dbPath};
+
         for (String gfixPath : gfixPaths) {
             if (!new java.io.File(gfixPath).canExecute()) continue;
-            try {
-                log("[gfix] Atualizando ODS: " + gfixPath + " -upgrade " + dbPath);
-                ProcessBuilder pb = new ProcessBuilder(
-                    gfixPath, "-upgrade", dbPath,
-                    "-user", "SYSDBA", "-password", "masterkey");
-                pb.redirectErrorStream(true);
-                Process proc = pb.start();
-                java.io.BufferedReader br = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(proc.getInputStream()));
-                String line;
-                while ((line = br.readLine()) != null) log("[gfix] " + line);
-                int code = proc.waitFor();
-                log("[gfix] exit=" + code);
-                if (code == 0) return true;
-            } catch (Exception e) {
-                log("[gfix] Erro: " + e.getMessage());
+            for (String target : dbTargets) {
+                try {
+                    log("[gfix] " + gfixPath + " -upgrade " + target);
+                    ProcessBuilder pb = new ProcessBuilder(
+                        gfixPath, "-user", "SYSDBA", "-password", "masterkey",
+                        "-upgrade", target);
+                    pb.redirectErrorStream(true);
+                    Process proc = pb.start();
+                    java.io.BufferedReader br = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(proc.getInputStream()));
+                    String line;
+                    while ((line = br.readLine()) != null) log("[gfix] " + line);
+                    int code = proc.waitFor();
+                    log("[gfix] exit=" + code);
+                    if (code == 0) return true;
+                } catch (Exception e) {
+                    log("[gfix] Erro: " + e.getMessage());
+                }
             }
         }
         log("[gfix] upgrade não disponível (gfix não encontrado ou falhou)");
