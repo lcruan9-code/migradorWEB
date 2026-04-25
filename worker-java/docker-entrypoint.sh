@@ -81,11 +81,14 @@ done
 
 if [ "$FB_OK" = "true" ]; then
     echo "[Entrypoint] ✅ Firebird 3.0 pronto na porta 3050"
-    # Garante senha SYSDBA=masterkey
-    echo "modify SYSDBA -pw masterkey" | \
-        /usr/bin/gsec -user SYSDBA -password masterkey 2>/dev/null || \
-    echo "modify SYSDBA -pw masterkey" | \
-        /usr/bin/gsec -user SYSDBA -password "" 2>/dev/null || true
+    # Normaliza SYSDBA=masterkey via SRP (Ubuntu instala Firebird3 com senha SRP vazia)
+    if /usr/bin/gsec -user SYSDBA -password "" -modify SYSDBA -pw masterkey 2>/dev/null; then
+        echo "[Entrypoint] ✅ SYSDBA: senha vazia → masterkey (SRP)"
+    elif /usr/bin/gsec -user SYSDBA -password masterkey -display SYSDBA 2>/dev/null | grep -qi sysdba; then
+        echo "[Entrypoint] ✅ SYSDBA já autenticado com masterkey"
+    else
+        echo "[Entrypoint] ⚠ Não foi possível confirmar senha SYSDBA"
+    fi
 else
     echo "[Entrypoint] ⚠ Firebird não respondeu em ${MAX_WAIT}s"
     echo "[Entrypoint]   Processos Firebird:"
