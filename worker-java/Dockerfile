@@ -118,7 +118,7 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 ENV PORT=8080
-ENV JAVA_TOOL_OPTIONS="-Xmx300m -Dfile.encoding=UTF-8 -Djava.net.preferIPv4Stack=true"
+ENV JAVA_TOOL_OPTIONS="-Xmx350m -Dfile.encoding=UTF-8 -Djava.net.preferIPv4Stack=true"
 
 EXPOSE 8080
 

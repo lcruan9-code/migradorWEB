@@ -90,20 +90,49 @@ public class AjusteGeralStep extends StepBase {
             ajustarClienteMem(store, cidadeDefault, estadoDefault);
             popularEstoqueMem(store);
         } else {
-            // SQL mode (real MySQL): keep existing behavior
+            // SQL mode (real MySQL / H2): commits intermediários entre cada bloco
+            // para liberar o buffer de UNDO do H2 e evitar OOM com grandes volumes.
             Connection c = ctx.getDestinoConn();
             int cidadeDefault = ctx.getConfig().getCidadeDefaultId();
             int estadoDefault = ctx.getConfig().getEstadoDefaultId();
+
             ajustarFornecedor(c);
+            commitSilent(c, "fornecedor");
+
             ajustarProduto(c);
+            commitSilent(c, "produto");   // maior tabela — commit crítico
+
             ajustarCategoria(c);
+            commitSilent(c, "categoria");
+
             ajustarSubcategoria(c);
+            commitSilent(c, "subcategoria");
+
             ajustarFabricante(c);
+            commitSilent(c, "fabricante");
+
             ajustarUnidade(c);
+            commitSilent(c, "unidade");
+
             ajustarCliente(c, cidadeDefault, estadoDefault);
+            commitSilent(c, "cliente");
+
             popularEstoque(c);
+            // commit final feito pelo MigracaoSyspdv após execute() retornar
         }
         contarInseridos(ctx, 0);
+    }
+
+    // =========================================================================
+    //  HELPER — commit intermediário (libera buffer de UNDO do H2)
+    // =========================================================================
+    private void commitSilent(java.sql.Connection c, String fase) {
+        try {
+            c.commit();
+            LOG.fine("[AjusteGeral] commit parcial OK: " + fase);
+        } catch (java.sql.SQLException e) {
+            LOG.warning("[AjusteGeral] commit parcial AVISO (" + fase + "): " + e.getMessage());
+        }
     }
 
     // =========================================================================
