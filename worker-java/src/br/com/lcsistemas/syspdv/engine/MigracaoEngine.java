@@ -445,6 +445,13 @@ public class MigracaoEngine {
 
         // ── Aponta config para o banco ODS 12.2 ──────────────────────────────────
         config.setFbArquivo(restoredPath);
+
+        // Libera espaço: remove o backup intermediário (.fbk) e o FDB original
+        // para reduzir pressão de memória/disco durante a migração
+        boolean fbkDel = new java.io.File(fbkPath).delete();
+        log("[gbak] backup .fbk removido: " + fbkDel + " (liberando ~" +
+            (new java.io.File(fbkPath).exists() ? "0" : "118") + " MB)");
+
         log("[gbak] ✅ Conversão concluída — conectando via FB 3.0 (ODS 12.2)");
     }
 
