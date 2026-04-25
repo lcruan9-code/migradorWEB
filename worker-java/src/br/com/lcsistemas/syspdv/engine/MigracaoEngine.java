@@ -105,6 +105,7 @@ public class MigracaoEngine {
         Connection destinoConn = null;
 
         SqlFileWriter  sqlWriter = null;
+        String         h2DbDir  = null;  // para limpeza no finally
 
         // Callback de log reutilizado pelo GerenciadorFirebird e ExecutorMigracao
         final GerenciadorFirebird.LogCallback logCallback = new GerenciadorFirebird.LogCallback() {
@@ -121,9 +122,14 @@ public class MigracaoEngine {
                 log("[1/5] Modo SQL Output: Inicializando H2 Embutido (MySQL Mode)...");
                 log("      Arquivo de saída final: " + config.getSqlOutputPath());
                 
-                // UUID único por job: garante banco H2 fresco (mem nomeado é compartilhado entre conexões na JVM)
+                // H2 FILE-BACKED: dados em /tmp para não inflar o heap Java.
+                // In-memory explodia o undo buffer com 5347 produtos × 400+ UPDATEs.
                 String h2DbId = java.util.UUID.randomUUID().toString().replace("-", "");
-                String h2Url = "jdbc:h2:mem:" + h2DbId + ";MODE=MySQL;DATABASE_TO_UPPER=FALSE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1";
+                h2DbDir = "/tmp/h2-" + h2DbId;
+                new java.io.File(h2DbDir).mkdirs();
+                String h2Url = "jdbc:h2:file:" + h2DbDir + "/db"
+                    + ";MODE=MySQL;DATABASE_TO_UPPER=FALSE;CASE_INSENSITIVE_IDENTIFIERS=TRUE"
+                    + ";CACHE_SIZE=16384;DB_CLOSE_ON_EXIT=FALSE";
                 try {
                     Class.forName("org.h2.Driver");
                     destinoConn = DriverManager.getConnection(h2Url, "sa", "");
@@ -298,6 +304,11 @@ public class MigracaoEngine {
         } finally {
             fechar(origemConn,  "origem");
             fechar(destinoConn, "destino");
+            // Limpa arquivos temporários do H2 file-backed
+            if (h2DbDir != null) {
+                deletarDiretorio(new java.io.File(h2DbDir));
+                log("[H2] Arquivos temporários removidos: " + h2DbDir);
+            }
             GerenciadorFirebird.pararSeIniciado(logCallback);
         }
     }
@@ -471,5 +482,18 @@ public class MigracaoEngine {
             try { conn.close(); }
             catch (Exception e) { LOG.warning("Erro ao fechar " + nome + ": " + e.getMessage()); }
         }
+    }
+
+    /** Remove recursivamente um diretório e todo seu conteúdo (cleanup H2 temp). */
+    private void deletarDiretorio(java.io.File dir) {
+        if (dir == null || !dir.exists()) return;
+        java.io.File[] files = dir.listFiles();
+        if (files != null) {
+            for (java.io.File f : files) {
+                if (f.isDirectory()) deletarDiretorio(f);
+                else f.delete();
+            }
+        }
+        dir.delete();
     }
 }
