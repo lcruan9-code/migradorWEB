@@ -118,7 +118,11 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 ENV PORT=8080
-ENV JAVA_TOOL_OPTIONS="-Xmx350m -Dfile.encoding=UTF-8 -Djava.net.preferIPv4Stack=true"
+# -Xmx350m: heap Java
+# -XX:ReservedCodeCacheSize=64m: limita JIT code cache (padrão 256m causa OOM no Render 512m)
+# -XX:TieredStopAtLevel=1: somente C1 JIT (reduz footprint do code cache ~60%)
+# Sem essas flags, o total JVM (heap + non-heap) ultrapassa o limite de 512m do container
+ENV JAVA_TOOL_OPTIONS="-Xmx350m -XX:ReservedCodeCacheSize=64m -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8 -Djava.net.preferIPv4Stack=true"
 
 EXPOSE 8080
 

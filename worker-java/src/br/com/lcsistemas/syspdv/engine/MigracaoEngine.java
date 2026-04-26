@@ -130,6 +130,7 @@ public class MigracaoEngine {
                 String h2Url = "jdbc:h2:file:" + h2DbDir + "/db"
                     + ";MODE=MySQL;DATABASE_TO_UPPER=FALSE;CASE_INSENSITIVE_IDENTIFIERS=TRUE"
                     + ";CACHE_SIZE=16384;DB_CLOSE_ON_EXIT=FALSE";
+                log("[H2] Banco FILE-BACKED: " + h2DbDir + "/db");
                 try {
                     Class.forName("org.h2.Driver");
                     destinoConn = DriverManager.getConnection(h2Url, "sa", "");

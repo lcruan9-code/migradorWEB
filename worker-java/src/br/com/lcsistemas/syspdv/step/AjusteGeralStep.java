@@ -90,35 +90,30 @@ public class AjusteGeralStep extends StepBase {
             ajustarClienteMem(store, cidadeDefault, estadoDefault);
             popularEstoqueMem(store);
         } else {
-            // SQL mode (real MySQL / H2): commits intermediários entre cada bloco
-            // para liberar o buffer de UNDO do H2 e evitar OOM com grandes volumes.
+            // SQL mode (real MySQL / H2).
+            // autoCommit=true: cada UPDATE é transação própria — elimina qualquer
+            // acúmulo de MVCC/undo no H2 (causa de OOM com 5000+ produtos).
             Connection c = ctx.getDestinoConn();
             int cidadeDefault = ctx.getConfig().getCidadeDefaultId();
             int estadoDefault = ctx.getConfig().getEstadoDefaultId();
 
-            ajustarFornecedor(c);
-            commitSilent(c, "fornecedor");
+            try { c.setAutoCommit(true); }
+            catch (Exception e) { LOG.warning("[AjusteGeral] setAutoCommit(true): " + e.getMessage()); }
 
-            ajustarProduto(c);
-            commitSilent(c, "produto");   // maior tabela — commit crítico
-
-            ajustarCategoria(c);
-            commitSilent(c, "categoria");
-
-            ajustarSubcategoria(c);
-            commitSilent(c, "subcategoria");
-
-            ajustarFabricante(c);
-            commitSilent(c, "fabricante");
-
-            ajustarUnidade(c);
-            commitSilent(c, "unidade");
-
-            ajustarCliente(c, cidadeDefault, estadoDefault);
-            commitSilent(c, "cliente");
-
-            popularEstoque(c);
-            // commit final feito pelo MigracaoSyspdv após execute() retornar
+            try {
+                ajustarFornecedor(c);
+                ajustarProduto(c);
+                ajustarCategoria(c);
+                ajustarSubcategoria(c);
+                ajustarFabricante(c);
+                ajustarUnidade(c);
+                ajustarCliente(c, cidadeDefault, estadoDefault);
+                popularEstoque(c);
+            } finally {
+                // Restaura autoCommit=false para o commit() do executor externo
+                try { c.setAutoCommit(false); }
+                catch (Exception e) { LOG.warning("[AjusteGeral] setAutoCommit(false): " + e.getMessage()); }
+            }
         }
         contarInseridos(ctx, 0);
     }
