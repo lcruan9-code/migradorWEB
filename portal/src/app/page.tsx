@@ -567,8 +567,17 @@ function LogPanel({ logs, status }: { logs: string[]; status: JobStatus }) {
           Logs da Operação — {statusLabel[status]}
         </span>
         {(status === "PROCESSANDO" || status === "PENDENTE") && (
-          <span style={{ marginLeft: "auto", fontSize: 10, color: C.textMute, fontFamily: "JetBrains Mono, monospace" }}>
-            live
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: C.green,
+              letterSpacing: 0.4,
+              animation: "lc-aguarde-pulse 1.2s ease-in-out infinite",
+            }}>
+              Aguarde
+            </span>
+            <span style={{ fontSize: 10, color: C.textMute, fontFamily: "JetBrains Mono, monospace" }}>
+              live
+            </span>
           </span>
         )}
       </div>
@@ -640,6 +649,11 @@ export default function Home() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [erroValidacao, setErroValidacao] = useState<string | null>(null);
 
+  /* — cronômetro — */
+  const [duracao,       setDuracao]       = useState(0);   // segundos decorridos
+  const [duracaoFinal,  setDuracaoFinal]  = useState<number | null>(null); // congela no fim
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inputRef   = useRef<HTMLInputElement>(null);
 
@@ -697,6 +711,27 @@ export default function Home() {
     }, 2000);
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, [jobId, status]);
+
+  /* — cronômetro: inicia ao PROCESSANDO, congela ao CONCLUIDO/ERRO — */
+  useEffect(() => {
+    if (status === "PROCESSANDO" || status === "PENDENTE") {
+      if (timerRef.current) return; // já rodando
+      setDuracao(0);
+      setDuracaoFinal(null);
+      timerRef.current = setInterval(() => setDuracao((s) => s + 1), 1000);
+    } else if (status === "CONCLUIDO" || status === "ERRO") {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+        setDuracaoFinal((prev) => prev ?? duracao); // congela o valor atual
+      }
+    } else {
+      // idle — reseta
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      setDuracao(0);
+      setDuracaoFinal(null);
+    }
+  }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* — drag & drop — */
   const onDragOver  = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragging(true); }, []);
@@ -824,10 +859,22 @@ export default function Home() {
 
   const pct = total > 0 ? Math.round((progresso / total) * 100) : 0;
 
+  /* — formata segundos em MM:SS — */
+  const fmtDuracao = (s: number) => {
+    const m = Math.floor(s / 60).toString().padStart(2, "0");
+    const sec = (s % 60).toString().padStart(2, "0");
+    return `${m}:${sec}`;
+  };
+
+  /* — duração a exibir (correndo ou congelada) — */
+  const duracaoExibida = duracaoFinal !== null ? duracaoFinal : duracao;
+
   const resetForm = () => {
     setStatus("idle"); setJobId(null); setLogs([]);
     setProgresso(0); setDownloadUrl(null); setErroValidacao(null);
     setFile(null); setSelected([]);
+    setDuracao(0); setDuracaoFinal(null);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   };
 
   /* ─── CNPJ mask ─────────────────────────────────────────── */
@@ -1040,12 +1087,24 @@ export default function Home() {
             </div>
           </Field>
 
-          {/* Progress bar */}
+          {/* Progress bar + duração */}
           {status !== "idle" && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#8b86ad", marginBottom: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#8b86ad", marginBottom: 6 }}>
                 <span>Step {progresso} de {total}</span>
-                <span>{pct}%</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {/* Cronômetro */}
+                  <span style={{
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 11,
+                    color: status === "CONCLUIDO" ? C.green : status === "ERRO" ? C.red : C.textDim,
+                    letterSpacing: 0.5,
+                  }}>
+                    {status === "CONCLUIDO" ? "✓ " : status === "ERRO" ? "✗ " : ""}
+                    Duração: {fmtDuracao(duracaoExibida)}
+                  </span>
+                  <span>{pct}%</span>
+                </div>
               </div>
               <div style={{ height: 6, background: C.bg2, borderRadius: 999, overflow: "hidden", border: `1px solid ${C.line}` }}>
                 <div style={{
