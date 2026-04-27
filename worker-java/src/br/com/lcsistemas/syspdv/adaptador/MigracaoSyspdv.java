@@ -5,6 +5,7 @@ import br.com.lcsistemas.syspdv.core.MigracaoException;
 import br.com.lcsistemas.syspdv.core.MigracaoStep;
 import br.com.lcsistemas.syspdv.engine.MigracaoEngine;
 import br.com.lcsistemas.syspdv.step.*;
+import br.com.lcsistemas.syspdv.step.ajuste.*;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -26,7 +27,9 @@ import java.util.logging.Logger;
  *   1. Unidade -> 2. NCM -> 3. CstCfop (mapas) -> 4. CEST -> 5. Categoria
  *   -> 6. Fabricante -> 7. Subcategoria -> 8. Fornecedor -> 9. Produto
  *   -> 10. Cliente -> 11. Receber -> 12. Pagar
- *   -> 13. AjustePos -> 14. AjusteGeral -> 15. GrupoTributacao
+ *   -> 13. AjustePos -> 14. AjusteFornecedor -> 15. AjusteProduto
+ *   -> 16. AjusteCategoria -> 17. AjusteUnidade -> 18. AjusteCliente
+ *   -> 19. AjusteEstoque -> 20. GrupoTributacao
  */
 public class MigracaoSyspdv implements AdaptadorMigracao {
 
@@ -146,7 +149,12 @@ public class MigracaoSyspdv implements AdaptadorMigracao {
 
         // ── Steps de ajuste: sempre executados (integridade dos dados migrados) ─
         steps.add(new AjustePosMigracaoStep());
-        steps.add(new AjusteGeralStep());
+        steps.add(new AjusteFornecedorStep());
+        steps.add(new AjusteProdutoStep());
+        steps.add(new AjusteCategoriaStep());
+        steps.add(new AjusteUnidadeStep());
+        steps.add(new AjusteClienteStep());
+        steps.add(new AjusteEstoqueStep());
 
         if (tudo || sel.contains("GRUPO_TRIBUTACAO")) steps.add(new GrupoTributacaoStep());
 
