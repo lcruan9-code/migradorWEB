@@ -277,7 +277,12 @@ public class MigracaoEngine {
             // ── Escrever dump SQL se modo SQL Output ──────────────────────────
             if (config.isModoSqlOutput() && sqlWriter != null && destinoConn != null) {
                 log("[SQL] Gerando arquivo dump final no padrão MySQL 5.5.38...");
-                sqlWriter.writeFromConnection(destinoConn);
+                // Converte nomes UPPERCASE do portal → lowercase do dump; vazio = todas as tabelas
+                java.util.Set<String> sqlTables = br.com.lcsistemas.syspdv.sql.LcSchema
+                    .toSqlNames(config.getTabelasSelecionadas());
+                if (!sqlTables.isEmpty())
+                    log("[SQL] Tabelas no dump: " + sqlTables);
+                sqlWriter.writeFromConnection(destinoConn, sqlTables);
                 log("[SQL] Dump gerado com sucesso em: " + config.getSqlOutputPath());
 
                 // ── Injetar UPDATE CNPJ no final do arquivo ───────────────────

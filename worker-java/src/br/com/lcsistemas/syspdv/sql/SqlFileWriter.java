@@ -25,15 +25,27 @@ public class SqlFileWriter {
         deferredSql.add(sql.trim());
     }
 
-    /** 
+    /**
      * Escreve o dump completo lendo diretamente do banco de dados (H2/MySQL).
+     * Dump tudo (retrocompatibilidade).
      */
     public void writeFromConnection(java.sql.Connection conn) throws IOException, java.sql.SQLException {
+        writeFromConnection(conn, null);
+    }
+
+    /**
+     * Escreve o dump filtrando apenas as tabelas em {@code sqlTables} (nomes lowercase).
+     * Se {@code sqlTables} for null ou vazio, dump de todas as tabelas.
+     */
+    public void writeFromConnection(java.sql.Connection conn, Set<String> sqlTables)
+            throws IOException, java.sql.SQLException {
         loadOriginalDdls();
+        boolean filtrar = sqlTables != null && !sqlTables.isEmpty();
         try (BufferedWriter w = openWriter()) {
             writeHeader(w);
             for (String table : LcSchema.TABLE_ORDER) {
                 if (!LcSchema.hasTable(table)) continue;
+                if (filtrar && !sqlTables.contains(table)) continue; // pula tabela não selecionada
                 writeTableFromDatabase(w, conn, table);
             }
             writeDeferredUpdates(w);

@@ -76,19 +76,30 @@ public class AjusteGeralStep extends StepBase {
 
     @Override
     public void execute(MigracaoContext ctx) throws MigracaoException {
+        // Determina quais tabelas foram selecionadas pelo portal.
+        // Se vazio = migração completa (retrocompatibilidade).
+        boolean tudo = !ctx.getConfig().temSelecao();
+        java.util.Set<String> sel = ctx.getConfig().getTabelasSelecionadas();
+
+        // ESTOQUE: qualquer uma das 3 tabelas do grupo estoque basta para rodar popularEstoque
+        boolean temEstoque = tudo
+            || sel.contains("ESTOQUE")
+            || sel.contains("AJUSTE_ESTOQUE")
+            || sel.contains("ESTOQUE_SALDO");
+
         SqlMemoryStore store = ctx.getMemoryStore();
         if (store != null) {
-            // In-memory mode: apply all corrections directly to store rows
+            // In-memory mode: aplica correções apenas nas tabelas selecionadas
             int cidadeDefault = ctx.getConfig().getCidadeDefaultId();
             int estadoDefault = ctx.getConfig().getEstadoDefaultId();
-            ajustarFornecedorMem(store);
-            ajustarProdutoMem(store);
-            ajustarCategoriaMem(store, "categoria");
-            ajustarCategoriaMem(store, "subcategoria");
-            ajustarCategoriaMem(store, "fabricante");
-            ajustarUnidadeMem(store);
-            ajustarClienteMem(store, cidadeDefault, estadoDefault);
-            popularEstoqueMem(store);
+            if (tudo || sel.contains("FORNECEDORES"))  ajustarFornecedorMem(store);
+            if (tudo || sel.contains("PRODUTO"))       ajustarProdutoMem(store);
+            if (tudo || sel.contains("CATEGORIA"))     ajustarCategoriaMem(store, "categoria");
+            if (tudo || sel.contains("SUBCATEGORIA"))  ajustarCategoriaMem(store, "subcategoria");
+            if (tudo || sel.contains("FABRICANTE"))    ajustarCategoriaMem(store, "fabricante");
+            if (tudo || sel.contains("UNIDADE"))       ajustarUnidadeMem(store);
+            if (tudo || sel.contains("CLIENTE"))       ajustarClienteMem(store, cidadeDefault, estadoDefault);
+            if (temEstoque)                            popularEstoqueMem(store);
         } else {
             // SQL mode (real MySQL / H2).
             // autoCommit=true: cada UPDATE é transação própria — elimina qualquer
@@ -101,14 +112,14 @@ public class AjusteGeralStep extends StepBase {
             catch (Exception e) { LOG.warning("[AjusteGeral] setAutoCommit(true): " + e.getMessage()); }
 
             try {
-                ajustarFornecedor(c);
-                ajustarProduto(c);
-                ajustarCategoria(c);
-                ajustarSubcategoria(c);
-                ajustarFabricante(c);
-                ajustarUnidade(c);
-                ajustarCliente(c, cidadeDefault, estadoDefault);
-                popularEstoque(c);
+                if (tudo || sel.contains("FORNECEDORES"))  ajustarFornecedor(c);
+                if (tudo || sel.contains("PRODUTO"))       ajustarProduto(c);
+                if (tudo || sel.contains("CATEGORIA"))     ajustarCategoria(c);
+                if (tudo || sel.contains("SUBCATEGORIA"))  ajustarSubcategoria(c);
+                if (tudo || sel.contains("FABRICANTE"))    ajustarFabricante(c);
+                if (tudo || sel.contains("UNIDADE"))       ajustarUnidade(c);
+                if (tudo || sel.contains("CLIENTE"))       ajustarCliente(c, cidadeDefault, estadoDefault);
+                if (temEstoque)                            popularEstoque(c);
             } finally {
                 // Restaura autoCommit=false para o commit() do executor externo
                 try { c.setAutoCommit(false); }
