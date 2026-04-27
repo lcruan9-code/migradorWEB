@@ -41,6 +41,20 @@ public class MigracaoConfig {
     private String myUsuario     = "root";
     private String mySenha       = "";
 
+    // ── Seleção de tabelas (portal web) ──────────────────────────────────────
+    /** Conjunto de tabelas a migrar (MAIÚSCULAS). Vazio = migrar tudo. */
+    private java.util.Set<String> tabelasSelecionadas = new java.util.HashSet<>();
+
+    /** CNPJ de destino — se preenchido, gera UPDATE empresa SET cnpj=... no fim do SQL. */
+    private String cnpjDestino = "";
+
+    public java.util.Set<String> getTabelasSelecionadas() { return tabelasSelecionadas; }
+    public void setTabelasSelecionadas(java.util.Set<String> v) { this.tabelasSelecionadas = v != null ? v : new java.util.HashSet<>(); }
+    public boolean temSelecao() { return !tabelasSelecionadas.isEmpty(); }
+
+    public String getCnpjDestino()          { return cnpjDestino; }
+    public void   setCnpjDestino(String v)  { this.cnpjDestino = v != null ? v.trim() : ""; }
+
     // ── Modo Web: geração de .SQL em vez de executar contra MySQL ─────────────
     private String sqlOutputPath = ""; // se preenchido, a engine gera .sql em vez de inserir
 

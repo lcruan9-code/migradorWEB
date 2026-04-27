@@ -646,10 +646,32 @@ public class AppWorker {
             c.setCidadeDefaultId(idCidade);
         }
 
+        // CNPJ de destino — se preenchido, substitui o padrão; UPDATE gerado no final do SQL
+        String cnpjDestino = data.cnpjDestino != null ? data.cnpjDestino.trim() : "";
+        if (!cnpjDestino.isEmpty()) {
+            c.setCnpjDestino(cnpjDestino);
+        }
+
+        // Tabelas selecionadas — lista CSV vinda do portal (ex: "PRODUTO,UNIDADE,NCM,...")
+        // Se vazia, a engine roda todos os steps (comportamento padrão)
+        String tabelasStr = data.tabelas != null ? data.tabelas.trim() : "";
+        if (!tabelasStr.isEmpty()) {
+            java.util.Set<String> sel = new java.util.HashSet<>();
+            for (String t : tabelasStr.split(",")) {
+                String tt = t.trim().toUpperCase();
+                if (!tt.isEmpty()) sel.add(tt);
+            }
+            c.setTabelasSelecionadas(sel);
+        }
+
         job.addLog("[Config] UF=" + uf + " | Cidade=" + cidade + " | Regime=" + regime
             + " | id_estado=" + c.getEstadoDefaultId() + " | id_cidade=" + c.getCidadeDefaultId());
         job.addLog("[Config] Sistema=" + sistema + " | Arquivo=" + fdbPath
             + " | pastaFB=" + c.getPastaFirebird());
+        if (!cnpjDestino.isEmpty())
+            job.addLog("[Config] CNPJ destino=" + cnpjDestino);
+        if (!tabelasStr.isEmpty())
+            job.addLog("[Config] Tabelas selecionadas=" + tabelasStr);
         return c;
     }
 
@@ -815,10 +837,12 @@ public class AppWorker {
 
                 // Monta MultipartData artificial com os campos do formulário
                 MultipartData data = new MultipartData();
-                data.uf      = uf;
-                data.cidade  = cidade;
-                data.regime  = regime;
-                data.filename = filename;
+                data.uf           = uf;
+                data.cidade       = cidade;
+                data.regime       = regime;
+                data.filename     = filename;
+                data.cnpjDestino  = body.has("cnpjDestino")  ? body.get("cnpjDestino").asText()  : "";
+                data.tabelas      = body.has("tabelas")      ? body.get("tabelas").asText()      : "";
 
                 JobState job = new JobState(jobId, chunkDir);
                 JOBS.put(jobId, job);
@@ -859,6 +883,8 @@ public class AppWorker {
         String uf;
         String cidade;
         String regime;
+        String cnpjDestino;   // CNPJ da empresa destino (opcional) — gera UPDATE no final do SQL
+        String tabelas;       // tabelas selecionadas, separadas por vírgula (opcional — vazio = todas)
     }
 
     /**
@@ -903,10 +929,12 @@ public class AppWorker {
                 String value = baos.toString("UTF-8").trim();
                 if (name != null) {
                     switch (name) {
-                        case "sistema": result.sistema = value; break;
-                        case "uf":      result.uf      = value; break;
-                        case "cidade":  result.cidade  = value; break;
-                        case "regime":  result.regime  = value; break;
+                        case "sistema":      result.sistema      = value; break;
+                        case "uf":           result.uf           = value; break;
+                        case "cidade":       result.cidade       = value; break;
+                        case "regime":       result.regime       = value; break;
+                        case "cnpjDestino":  result.cnpjDestino  = value; break;
+                        case "tabelas":      result.tabelas      = value; break;
                     }
                 }
                 if (!more) break;

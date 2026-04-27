@@ -7,8 +7,11 @@ import br.com.lcsistemas.syspdv.engine.MigracaoEngine;
 import br.com.lcsistemas.syspdv.step.*;
 
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -29,6 +32,12 @@ public class MigracaoSyspdv implements AdaptadorMigracao {
 
     private static final Logger LOG = Logger.getLogger(MigracaoSyspdv.class.getName());
     private static final String NOME = "MigracaoSyspdv";
+
+    /** Steps que lêem do Firebird — usados para decidir quando liberar FB 3.0. */
+    private static final Set<String> STEPS_FIREBIRD = new HashSet<>(Arrays.asList(
+        "Unidade","Ncm","CstCfop","Cest","Categoria","Fabricante",
+        "Subcategoria","Fornecedor","Produto","Cliente","Receber","Pagar"
+    ));
 
     private final MigracaoContext ctx;
     private final MigracaoEngine.ProgressListener listener;
@@ -77,10 +86,12 @@ public class MigracaoSyspdv implements AdaptadorMigracao {
                     + " — OK. inseridos=" + ins + " ignorados=" + ign + " erros=" + err);
                 stepConcluido(nome, ins, ign, err, true);
 
-                // Após PagarStep (i=11, step 12), o Firebird não é mais necessário.
-                // Steps 13-15 (AjustePos, AjusteGeral, GrupoTributacao) usam apenas H2.
-                // Fechar a conexão + parar FB 3.0 libera ~70MB antes do AjusteGeral.
-                if (i == 11) {
+                // Libera Firebird após o último step que o utiliza (dinâmico — respeita filtragem).
+                // Steps de ajuste (AjustePos, AjusteGeral, GrupoTributacao) usam apenas H2.
+                boolean esteUsaFirebird  = STEPS_FIREBIRD.contains(nome);
+                boolean proximoUsaFirebird = (i + 1 < total)
+                    && STEPS_FIREBIRD.contains(steps.get(i + 1).getNome());
+                if (esteUsaFirebird && !proximoUsaFirebird) {
                     liberarFirebird(conn);
                 }
 
@@ -108,23 +119,42 @@ public class MigracaoSyspdv implements AdaptadorMigracao {
     }
 
     private List<MigracaoStep> buildSteps() {
-        return Arrays.<MigracaoStep>asList(
-            new UnidadeStep(),
-            new NcmStep(),
-            new CstCfopStep(),
-            new CestStep(),
-            new CategoriaStep(),
-            new FabricanteStep(),
-            new SubcategoriaStep(),
-            new FornecedorStep(),
-            new ProdutoStep(),
-            new ClienteStep(),
-            new ReceberStep(),
-            new PagarStep(),
-            new AjustePosMigracaoStep(),
-            new AjusteGeralStep(),
-            new GrupoTributacaoStep()
-        );
+        Set<String> sel  = ctx.getConfig().getTabelasSelecionadas();
+        boolean     tudo = !ctx.getConfig().temSelecao(); // vazio = migrar tudo
+
+        if (tudo) {
+            log("[SYSPDV] Nenhuma seleção de tabelas — executando todos os steps.");
+        } else {
+            log("[SYSPDV] Tabelas selecionadas: " + sel);
+        }
+
+        List<MigracaoStep> steps = new ArrayList<>();
+
+        // ── Steps com tabelas selecionáveis ──────────────────────────────────
+        if (tudo || sel.contains("UNIDADE"))        steps.add(new UnidadeStep());
+        if (tudo || sel.contains("NCM"))            steps.add(new NcmStep());
+        if (tudo || sel.contains("CST"))            steps.add(new CstCfopStep());
+        if (tudo || sel.contains("CEST"))           steps.add(new CestStep());
+        if (tudo || sel.contains("CATEGORIA"))      steps.add(new CategoriaStep());
+        if (tudo || sel.contains("FABRICANTE"))     steps.add(new FabricanteStep());
+        if (tudo || sel.contains("SUBCATEGORIA"))   steps.add(new SubcategoriaStep());
+        if (tudo || sel.contains("FORNECEDORES"))   steps.add(new FornecedorStep());
+        if (tudo || sel.contains("PRODUTO"))        steps.add(new ProdutoStep());
+        if (tudo || sel.contains("CLIENTE"))        steps.add(new ClienteStep());
+        if (tudo || sel.contains("RECEBER"))        steps.add(new ReceberStep());
+        if (tudo || sel.contains("PAGAR"))          steps.add(new PagarStep());
+
+        // ── Steps de ajuste: sempre executados (integridade dos dados migrados) ─
+        steps.add(new AjustePosMigracaoStep());
+        steps.add(new AjusteGeralStep());
+
+        if (tudo || sel.contains("GRUPO_TRIBUTACAO")) steps.add(new GrupoTributacaoStep());
+
+        log("[SYSPDV] Steps a executar (" + steps.size() + "): "
+            + steps.stream().map(MigracaoStep::getNome)
+                   .collect(java.util.stream.Collectors.joining(", ")));
+
+        return steps;
     }
 
     /**

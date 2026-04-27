@@ -279,6 +279,23 @@ public class MigracaoEngine {
                 log("[SQL] Gerando arquivo dump final no padrão MySQL 5.5.38...");
                 sqlWriter.writeFromConnection(destinoConn);
                 log("[SQL] Dump gerado com sucesso em: " + config.getSqlOutputPath());
+
+                // ── Injetar UPDATE CNPJ no final do arquivo ───────────────────
+                String cnpjDestino = config.getCnpjDestino();
+                if (cnpjDestino != null && !cnpjDestino.isEmpty()) {
+                    try {
+                        java.nio.file.Path sqlPath = Paths.get(config.getSqlOutputPath());
+                        String updateSql = "\n-- CNPJ da empresa destino\n"
+                            + "UPDATE `empresa` SET `cnpj` = '"
+                            + cnpjDestino.replace("'", "''") + "' WHERE `id` = 1;\n";
+                        java.nio.file.Files.write(sqlPath,
+                            updateSql.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                            java.nio.file.StandardOpenOption.APPEND);
+                        log("[SQL] UPDATE empresa.cnpj='" + cnpjDestino + "' adicionado ao final do arquivo.");
+                    } catch (Exception eCnpj) {
+                        log("[SQL] AVISO: não foi possível adicionar UPDATE CNPJ: " + eCnpj.getMessage());
+                    }
+                }
             }
 
             // ── Resumo final ──────────────────────────────────────────────────
