@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #07060d;
+  --foreground: #e8e6f5;
 }
 
 @theme inline {
@@ -12,24 +12,53 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2446; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #3a2f63; }
+
+/* Shake animation — campo bloqueado clicado */
+@keyframes lcShake {
+  0%,100% { transform: translateX(0) rotate(0); }
+  8%  { transform: translateX(-11px) rotate(-1.5deg); }
+  18% { transform: translateX(12px)  rotate(1.8deg);  }
+  28% { transform: translateX(-10px) rotate(-1.4deg); }
+  38% { transform: translateX(10px)  rotate(1.3deg);  }
+  48% { transform: translateX(-8px)  rotate(-1deg);   }
+  58% { transform: translateX(7px)   rotate(.8deg);   }
+  70% { transform: translateX(-5px)  rotate(-.5deg);  }
+  82% { transform: translateX(4px)   rotate(.3deg);   }
+  92% { transform: translateX(-2px)  rotate(0);       }
+}
+.lc-shake {
+  animation: lcShake .75s cubic-bezier(.36,.07,.19,.97);
+  box-shadow: 0 0 0 2px #ef444477, 0 0 22px #ef444488 !important;
+  background: linear-gradient(90deg, #ef44441a, transparent) !important;
+}
+
+/* Pulse animation — pré-requisito que precisa ser selecionado */
+@keyframes lcPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+  50%     { box-shadow: 0 0 0 4px rgba(245,158,11,.35), 0 0 18px rgba(245,158,11,.55); }
+}
+.lc-pulse {
+  animation: lcPulse .55s ease-in-out 2;
+  border-color: #f59e0b !important;
+}
+
+/* Download bounce */
 @keyframes bounce-subtle {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+  50%       { transform: translateY(-4px); }
 }
-
 .animate-bounce-subtle {
   animation: bounce-subtle 2s infinite ease-in-out;
 }
