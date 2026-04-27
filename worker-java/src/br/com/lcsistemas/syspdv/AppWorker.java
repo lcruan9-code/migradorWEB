@@ -842,7 +842,19 @@ public class AppWorker {
                 data.regime       = regime;
                 data.filename     = filename;
                 data.cnpjDestino  = body.has("cnpjDestino")  ? body.get("cnpjDestino").asText()  : "";
-                data.tabelas      = body.has("tabelas")      ? body.get("tabelas").asText()      : "";
+                // tabelas pode chegar como JSON array ["PRODUTO","NCM",...] ou CSV string "PRODUTO,NCM,..."
+                // Jackson retorna "" para .asText() em ArrayNode, por isso tratamos os dois casos
+                if (body.has("tabelas") && body.get("tabelas").isArray()) {
+                    ArrayNode arr = (ArrayNode) body.get("tabelas");
+                    StringBuilder tabelasSb = new StringBuilder();
+                    for (int ti = 0; ti < arr.size(); ti++) {
+                        if (tabelasSb.length() > 0) tabelasSb.append(",");
+                        tabelasSb.append(arr.get(ti).asText());
+                    }
+                    data.tabelas = tabelasSb.toString();
+                } else {
+                    data.tabelas = body.has("tabelas") ? body.get("tabelas").asText() : "";
+                }
 
                 JobState job = new JobState(jobId, chunkDir);
                 JOBS.put(jobId, job);
