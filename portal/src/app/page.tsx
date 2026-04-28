@@ -747,9 +747,10 @@ export default function Home() {
 
   const handleIniciar = async () => {
     setErroValidacao(null);
-    if (!file)   { setErroValidacao("Selecione o arquivo .FDB/.FBK primeiro."); return; }
-    if (!uf)     { setErroValidacao("Selecione o Estado (UF) da empresa."); return; }
-    if (!cidade) { setErroValidacao("Selecione a Cidade da empresa."); return; }
+    if (!file)            { setErroValidacao("Selecione o arquivo .FDB/.FBK primeiro."); return; }
+    if (!uf)              { setErroValidacao("Selecione o Estado (UF) da empresa."); return; }
+    if (!cidade)          { setErroValidacao("Selecione a Cidade da empresa."); return; }
+    if (selected.length === 0) { setErroValidacao("Selecione pelo menos um grupo de tabelas para migrar."); return; }
 
     setLogs([]); setProgresso(0); setDownloadUrl(null);
     setStatus("PENDENTE"); setJobId(null);
