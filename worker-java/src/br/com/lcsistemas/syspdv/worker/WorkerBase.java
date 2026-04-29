@@ -97,6 +97,22 @@ public abstract class WorkerBase {
                     respond(ex, 400, err("Arquivo não recebido")); return;
                 }
 
+                // Validate required fields
+                if (data.uf == null || data.uf.trim().isEmpty()) {
+                    respond(ex, 400, err("Campo 'uf' é obrigatório")); return;
+                }
+                if (data.cidade == null || data.cidade.trim().isEmpty()) {
+                    respond(ex, 400, err("Campo 'cidade' é obrigatório")); return;
+                }
+                String sistemaNorm = data.sistema != null ? data.sistema.trim().toLowerCase() : "";
+                if (!sistemaNorm.equals("syspdv") && !sistemaNorm.equals("gdoor")
+                        && !sistemaNorm.equals("host") && !sistemaNorm.equals("clipp")) {
+                    respond(ex, 400, err("Sistema inválido: " + data.sistema)); return;
+                }
+                if (!pareceBinario(data.fileBytes)) {
+                    respond(ex, 400, err("Arquivo não parece ser um banco de dados Firebird (.fdb/.fbk)")); return;
+                }
+
                 Path tmpDir     = Files.createTempDirectory("migrador-" + getSistema() + "-");
                 Path uploadPath = tmpDir.resolve(filename);
                 Files.write(uploadPath, data.fileBytes);
@@ -385,5 +401,15 @@ public abstract class WorkerBase {
 
     protected static String err(String msg) {
         return "{\"erro\":\"" + (msg == null ? "erro" : msg.replace("\"","'")) + "\"}";
+    }
+
+    /** Returns true if the first 256 bytes contain at least one non-printable, non-whitespace byte (i.e. binary data). */
+    private static boolean pareceBinario(byte[] bytes) {
+        int check = Math.min(bytes.length, 256);
+        for (int i = 0; i < check; i++) {
+            int b = bytes[i] & 0xFF;
+            if (b < 0x09 || (b > 0x0D && b < 0x20) || b == 0x7F) return true;
+        }
+        return false;
     }
 }

@@ -339,218 +339,224 @@ public class AjusteProdutoStep extends AjusteBase {
     }
 
     // =========================================================================
-    //  SQL MODE
+    //  SQL MODE — consolidated UPDATEs (reduced from ~85 to ~18 table scans)
     // =========================================================================
     private void ajustarProduto(Connection c) {
         String t = "lc_sistemas.produto";
 
-        execIgnore(c, "UPDATE "+t+" SET referencia   = '' WHERE referencia    LIKE '%SEM%'", t);
-        execIgnore(c, "UPDATE "+t+" SET referencia   = '' WHERE referencia    LIKE '%GTIN%'", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo       = '' WHERE codigo        LIKE '%SEM%'", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo       = '' WHERE codigo        LIKE '%GTIN%'", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo_barras= '' WHERE codigo_barras LIKE '%SEM%'", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo_barras= '' WHERE codigo_barras LIKE '%GTIN%'", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo       = REPLACE(codigo,'*','')", t);
-        execIgnore(c, "UPDATE "+t+" SET referencia   = REPLACE(referencia,'*','')", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo_barras= REPLACE(codigo_barras,'*','')", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo_barras= REPLACE(codigo_barras,' ','')", t);
+        // 1. Code cleanup: SEM/GTIN → '', strip *, trim spaces (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " referencia    = CASE WHEN referencia    LIKE '%SEM%' OR referencia    LIKE '%GTIN%' THEN ''"
+            + "                      ELSE TRIM(REPLACE(referencia,'*','')) END,"
+            + " codigo        = CASE WHEN codigo        LIKE '%SEM%' OR codigo        LIKE '%GTIN%' THEN ''"
+            + "                      ELSE TRIM(REPLACE(codigo,'*','')) END,"
+            + " codigo_barras = CASE WHEN codigo_barras LIKE '%SEM%' OR codigo_barras LIKE '%GTIN%' THEN ''"
+            + "                      ELSE TRIM(REPLACE(REPLACE(codigo_barras,'*',''),' ','')) END", t);
 
-        // Nulos → ''
-        execIgnore(c, "UPDATE "+t+" SET referencia    = '' WHERE referencia    IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo        = '' WHERE codigo        IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo_barras = '' WHERE codigo_barras IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET nome          = '' WHERE nome          IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET descricao     = '' WHERE descricao     IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ex_tipi       = '' WHERE ex_tipi       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_icmsobs  = '' WHERE trib_icmsobs  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_unidadetributavel = '' WHERE trib_unidadetributavel IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_genero   = '' WHERE trib_genero   IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET observacoes   = '' WHERE observacoes   IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET foto          = '' WHERE foto          IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET foto2         = '' WHERE foto2         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET foto3         = '' WHERE foto3         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET local         = '' WHERE local         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ref_cruzada1  = '' WHERE ref_cruzada1  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ref_cruzada2  = '' WHERE ref_cruzada2  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ref_cruzada3  = '' WHERE ref_cruzada3  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ref_cruzada4  = '' WHERE ref_cruzada4  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ref_cruzada5  = '' WHERE ref_cruzada5  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ref_cruzada6  = '' WHERE ref_cruzada6  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET tipo_produto  = 'PRODUTO' WHERE tipo_produto IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comb_cprodanp = '' WHERE comb_cprodanp IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comb_descanp  = '' WHERE comb_descanp  IS NULL", t);
+        // 2. String nulls → '' (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " referencia              = COALESCE(referencia,''),"
+            + " codigo                  = COALESCE(codigo,''),"
+            + " codigo_barras           = COALESCE(codigo_barras,''),"
+            + " nome                    = COALESCE(nome,''),"
+            + " descricao               = COALESCE(descricao,''),"
+            + " ex_tipi                 = COALESCE(ex_tipi,''),"
+            + " trib_icmsobs            = COALESCE(trib_icmsobs,''),"
+            + " trib_unidadetributavel  = COALESCE(trib_unidadetributavel,''),"
+            + " trib_genero             = COALESCE(trib_genero,''),"
+            + " observacoes             = COALESCE(observacoes,''),"
+            + " foto                    = COALESCE(foto,''),"
+            + " foto2                   = COALESCE(foto2,''),"
+            + " foto3                   = COALESCE(foto3,''),"
+            + " local                   = COALESCE(local,''),"
+            + " ref_cruzada1            = COALESCE(ref_cruzada1,''),"
+            + " ref_cruzada2            = COALESCE(ref_cruzada2,''),"
+            + " ref_cruzada3            = COALESCE(ref_cruzada3,''),"
+            + " ref_cruzada4            = COALESCE(ref_cruzada4,''),"
+            + " ref_cruzada5            = COALESCE(ref_cruzada5,''),"
+            + " ref_cruzada6            = COALESCE(ref_cruzada6,''),"
+            + " tipo_produto            = COALESCE(tipo_produto,'PRODUTO'),"
+            + " comb_cprodanp           = COALESCE(comb_cprodanp,''),"
+            + " comb_descanp            = COALESCE(comb_descanp,'')", t);
 
-        // Nulos → 0 / FKs default
-        execIgnore(c, "UPDATE "+t+" SET id_grupotributacao = 1    WHERE id_grupotributacao IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_categoria       = 1    WHERE id_categoria       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_cfop            = 289  WHERE id_cfop            IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_cst             = 15   WHERE id_cst             IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_ncm             = 1    WHERE id_ncm             IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_cest            = 1    WHERE id_cest            IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_fabricante      = 1    WHERE id_fabricante      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_fornecedor      = 1    WHERE id_fornecedor      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidade         = 1    WHERE id_unidade         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_subcategoria    = 1    WHERE id_subcategoria    IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_nutricional     = 0    WHERE id_nutricional     IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeembalagem= 0    WHERE id_unidadeembalagem IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado2 = id_unidade WHERE qtd_minimapv2 > 0 AND preco_venda2 > 0 AND id_unidadeatacado2 IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado3 = id_unidade WHERE qtd_minimapv3 > 0 AND preco_venda3 > 0 AND id_unidadeatacado3 IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado4 = id_unidade WHERE qtd_minimapv4 > 0 AND preco_venda4 > 0 AND id_unidadeatacado4 IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado2 = 0 WHERE id_unidadeatacado2 IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado3 = 0 WHERE id_unidadeatacado3 IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado4 = 0 WHERE id_unidadeatacado4 IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado2 = 0 WHERE qtd_minimapv2 <= 0 AND preco_venda2 <= 0", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado3 = 0 WHERE qtd_minimapv3 <= 0 AND preco_venda3 <= 0", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado4 = 0 WHERE qtd_minimapv4 <= 0 AND preco_venda4 <= 0", t);
-        execIgnore(c, "UPDATE "+t+" SET origem_produto     = 0 WHERE origem_produto IS NULL OR origem_produto = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_fatorunidade  = 0.000 WHERE trib_fatorunidade IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_icmsaliqsaida = 0.000 WHERE trib_icmsaliqsaida IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_icmsaliqredbasecalcsaida = 0.000 WHERE trib_icmsaliqredbasecalcsaida IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_icmsfcpaliq   = 0.000 WHERE trib_icmsfcpaliq  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_issaliqsaida  = 0.000 WHERE trib_issaliqsaida IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_ipialiqsaida  = 0.000 WHERE trib_ipialiqsaida IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_pisaliqsaida  = 0.000 WHERE trib_pisaliqsaida IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_cofinsaliqsaida = 0.000 WHERE trib_cofinsaliqsaida IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_pmc          = 0.000 WHERE preco_pmc         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_custo        = 0.000 WHERE preco_custo       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda        = 0.000 WHERE preco_venda       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_compra = preco_custo  WHERE preco_compra IS NULL OR preco_compra = '0.000'", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_custo  = preco_compra WHERE preco_custo  IS NULL OR preco_custo  = '0.000'", t);
-        execIgnore(c, "UPDATE "+t+" SET valor_compra = preco_compra WHERE valor_compra IS NULL OR valor_compra = '0.000'", t);
-        execIgnore(c, "UPDATE "+t+" SET custo_medio       = 0.000 WHERE custo_medio       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro      = 0.000 WHERE margem_lucro      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET desconto_max      = 0.000 WHERE desconto_max      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda2      = 0.000 WHERE preco_venda2      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro2     = 0.000 WHERE margem_lucro2     IS NULL OR preco_venda2 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET qtd_minimapv2     = 0.000 WHERE qtd_minimapv2     IS NULL OR preco_venda2 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET desconto_max2     = 0.000 WHERE desconto_max2     IS NULL OR preco_venda2 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda3      = 0.000 WHERE preco_venda3      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro3     = 0.000 WHERE margem_lucro3     IS NULL OR preco_venda3 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET qtd_minimapv3     = 0.000 WHERE qtd_minimapv3     IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET desconto_max3     = 0.000 WHERE desconto_max3     IS NULL OR preco_venda3 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda4      = 0.000 WHERE preco_venda4      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro4     = 0.000 WHERE margem_lucro4     IS NULL OR preco_venda4 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET qtd_minimapv4     = 0.000 WHERE qtd_minimapv4     IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET desconto_max4     = 0.000 WHERE desconto_max4     IS NULL OR preco_venda4 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_antigo      = 0.000 WHERE preco_antigo      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET valor_frete       = 0.000 WHERE valor_frete       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_ideal      = 0.000 WHERE margem_ideal      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ipi              = 0.000 WHERE ipi               IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_promocao   = 0.000 WHERE preco_promocao    IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comissao         = 0.000 WHERE comissao          IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comissao_valor   = 0.000 WHERE comissao_valor    IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET fidelidade_pontos= 0.000 WHERE fidelidade_pontos IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET estoque          = 0.000 WHERE estoque           IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET estoque          = 0.000 WHERE tipo_produto      = 'SERVICO'", t);
-        execIgnore(c, "UPDATE "+t+" SET estoque          = 0     WHERE estoque           < 0", t);
-        execIgnore(c, "UPDATE "+t+" SET estoque_minimo   = 0.000 WHERE estoque_minimo    IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET estoque_max      = 0.000 WHERE estoque_max       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET estoque_tara     = 0.000 WHERE estoque_tara      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET qtd_embalagem    = 1.000 WHERE qtd_embalagem IS NULL OR qtd_embalagem = 0", t);
-        execIgnore(c, "UPDATE "+t+" SET qtd_diasvalidade = 0     WHERE qtd_diasvalidade  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET peso_bruto       = 0.000 WHERE peso_bruto        IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET peso_liquido     = 0.000 WHERE peso_liquido      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comb_percentualgaspetroleo         = 0.000 WHERE comb_percentualgaspetroleo         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comb_percentualgasnaturalnacional  = 0.000 WHERE comb_percentualgasnaturalnacional  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comb_percentualgasnaturalimportado = 0.000 WHERE comb_percentualgasnaturalimportado IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comb_valorpartida                  = 0.000 WHERE comb_valorpartida                  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET comb_percentualbiodiesel           = 0.000 WHERE comb_percentualbiodiesel           IS NULL", t);
+        // 3. FK integer defaults (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " id_grupotributacao  = COALESCE(id_grupotributacao,1),"
+            + " id_categoria        = COALESCE(id_categoria,1),"
+            + " id_cfop             = COALESCE(id_cfop,289),"
+            + " id_cst              = COALESCE(id_cst,15),"
+            + " id_ncm              = COALESCE(id_ncm,1),"
+            + " id_cest             = COALESCE(id_cest,1),"
+            + " id_fabricante       = COALESCE(id_fabricante,1),"
+            + " id_fornecedor       = COALESCE(id_fornecedor,1),"
+            + " id_unidade          = COALESCE(id_unidade,1),"
+            + " id_subcategoria     = COALESCE(id_subcategoria,1),"
+            + " id_nutricional      = COALESCE(id_nutricional,0),"
+            + " id_unidadeembalagem = COALESCE(id_unidadeembalagem,0),"
+            + " origem_produto      = CASE WHEN origem_produto IS NULL OR origem_produto='' THEN '0' ELSE origem_produto END", t);
 
-        // Flags S/N
-        execIgnore(c, "UPDATE "+t+" SET ativo               = 1     WHERE ativo               IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ativo               = 0     WHERE nome                = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_desconto       = 'S'   WHERE pode_desconto       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_balanca        = 'N'   WHERE pode_balanca        IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_fracionado     = 'N'   WHERE pode_fracionado     IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_lote           = 'N'   WHERE pode_lote           IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_comissao       = 'S'   WHERE pode_comissao       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_lerpeso        = 'N'   WHERE pode_lerpeso        IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_atualizarncm  = 'S'   WHERE pode_atualizarncm   IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_producao_propria = 'n' WHERE pode_producao_propria IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_balanca    = IF(SUBSTRING_INDEX(estoque,'.',-1)>0,'S','N') WHERE pode_balanca    = 'N'", t);
-        execIgnore(c, "UPDATE "+t+" SET pode_fracionado = IF(SUBSTRING_INDEX(estoque,'.',-1)>0,'S','N') WHERE pode_fracionado = 'N'", t);
+        // 4. Unidade atacado conditionals (3 targeted scans, order-dependent)
+        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado2=id_unidade WHERE qtd_minimapv2>0 AND preco_venda2>0 AND id_unidadeatacado2 IS NULL", t);
+        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado3=id_unidade WHERE qtd_minimapv3>0 AND preco_venda3>0 AND id_unidadeatacado3 IS NULL", t);
+        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado4=id_unidade WHERE qtd_minimapv4>0 AND preco_venda4>0 AND id_unidadeatacado4 IS NULL", t);
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " id_unidadeatacado2 = COALESCE(id_unidadeatacado2,0),"
+            + " id_unidadeatacado3 = COALESCE(id_unidadeatacado3,0),"
+            + " id_unidadeatacado4 = COALESCE(id_unidadeatacado4,0)", t);
 
-        // Tributação defaults
-        execIgnore(c, "UPDATE "+t+" SET trib_ipisaida    = '53' WHERE trib_ipisaida    IS NULL OR trib_ipisaida    = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_pissaida    = '07' WHERE trib_pissaida    IS NULL OR trib_pissaida    = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_cofinssaida = '07' WHERE trib_cofinssaida IS NULL OR trib_cofinssaida = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_pissaida    = LPAD(trib_pissaida,2,'0')", t);
-        execIgnore(c, "UPDATE "+t+" SET trib_cofinssaida = LPAD(trib_cofinssaida,2,'0')", t);
+        // 5. All numeric/double nulls → 0, estoque/qtd fixes (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " trib_fatorunidade   = COALESCE(trib_fatorunidade,0),"
+            + " trib_icmsaliqsaida  = COALESCE(trib_icmsaliqsaida,0),"
+            + " trib_icmsaliqredbasecalcsaida = COALESCE(trib_icmsaliqredbasecalcsaida,0),"
+            + " trib_icmsfcpaliq    = COALESCE(trib_icmsfcpaliq,0),"
+            + " trib_issaliqsaida   = COALESCE(trib_issaliqsaida,0),"
+            + " trib_ipialiqsaida   = COALESCE(trib_ipialiqsaida,0),"
+            + " trib_pisaliqsaida   = COALESCE(trib_pisaliqsaida,0),"
+            + " trib_cofinsaliqsaida= COALESCE(trib_cofinsaliqsaida,0),"
+            + " preco_pmc           = COALESCE(preco_pmc,0),"
+            + " preco_custo         = COALESCE(preco_custo,0),"
+            + " preco_venda         = COALESCE(preco_venda,0),"
+            + " preco_compra        = COALESCE(preco_compra,0),"
+            + " valor_compra        = COALESCE(valor_compra,0),"
+            + " custo_medio         = COALESCE(custo_medio,0),"
+            + " margem_lucro        = COALESCE(margem_lucro,0),"
+            + " desconto_max        = COALESCE(desconto_max,0),"
+            + " preco_venda2        = COALESCE(preco_venda2,0),"
+            + " margem_lucro2       = COALESCE(margem_lucro2,0),"
+            + " qtd_minimapv2       = COALESCE(qtd_minimapv2,0),"
+            + " desconto_max2       = COALESCE(desconto_max2,0),"
+            + " preco_venda3        = COALESCE(preco_venda3,0),"
+            + " margem_lucro3       = COALESCE(margem_lucro3,0),"
+            + " qtd_minimapv3       = COALESCE(qtd_minimapv3,0),"
+            + " desconto_max3       = COALESCE(desconto_max3,0),"
+            + " preco_venda4        = COALESCE(preco_venda4,0),"
+            + " margem_lucro4       = COALESCE(margem_lucro4,0),"
+            + " qtd_minimapv4       = COALESCE(qtd_minimapv4,0),"
+            + " desconto_max4       = COALESCE(desconto_max4,0),"
+            + " preco_antigo        = COALESCE(preco_antigo,0),"
+            + " valor_frete         = COALESCE(valor_frete,0),"
+            + " margem_ideal        = COALESCE(margem_ideal,0),"
+            + " ipi                 = COALESCE(ipi,0),"
+            + " preco_promocao      = COALESCE(preco_promocao,0),"
+            + " comissao            = COALESCE(comissao,0),"
+            + " comissao_valor      = COALESCE(comissao_valor,0),"
+            + " fidelidade_pontos   = COALESCE(fidelidade_pontos,0),"
+            + " estoque             = CASE WHEN estoque IS NULL OR estoque<0 OR tipo_produto='SERVICO' THEN 0 ELSE estoque END,"
+            + " estoque_minimo      = COALESCE(estoque_minimo,0),"
+            + " estoque_max         = COALESCE(estoque_max,0),"
+            + " estoque_tara        = COALESCE(estoque_tara,0),"
+            + " qtd_embalagem       = CASE WHEN qtd_embalagem IS NULL OR qtd_embalagem=0 THEN 1 ELSE qtd_embalagem END,"
+            + " qtd_diasvalidade    = COALESCE(qtd_diasvalidade,0),"
+            + " peso_bruto          = COALESCE(peso_bruto,0),"
+            + " peso_liquido        = COALESCE(peso_liquido,0)", t);
 
-        // Datas
-        execIgnore(c, "UPDATE "+t+" SET datahora_cadastro   = NOW() WHERE datahora_cadastro   IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET datahora_alteracao  = NOW() WHERE datahora_alteracao  IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET data_promocaoinicial = NULL WHERE data_promocaoinicial = '' OR data_promocaoinicial = '0000-00-00' OR preco_promocao = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET data_promocaofinal   = NULL WHERE data_promocaofinal   = '' OR data_promocaofinal   = '0000-00-00' OR preco_promocao = 0.000", t);
+        // 6. Comb fields (optional — execIgnore handles missing columns)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " comb_percentualgaspetroleo          = COALESCE(comb_percentualgaspetroleo,0),"
+            + " comb_percentualgasnaturalnacional   = COALESCE(comb_percentualgasnaturalnacional,0),"
+            + " comb_percentualgasnaturalimportado  = COALESCE(comb_percentualgasnaturalimportado,0),"
+            + " comb_valorpartida                   = COALESCE(comb_valorpartida,0),"
+            + " comb_percentualbiodiesel            = COALESCE(comb_percentualbiodiesel,0)", t);
 
-        // Normaliza decimais
-        execIgnore(c, "UPDATE "+t+" SET preco_venda  = CONVERT(preco_venda,  DECIMAL(12,3))", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda2 = CONVERT(preco_venda2, DECIMAL(12,3))", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda3 = CONVERT(preco_venda3, DECIMAL(12,3))", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda4 = CONVERT(preco_venda4, DECIMAL(12,3))", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_custo  = CONVERT(preco_custo,  DECIMAL(12,3))", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_compra = CONVERT(preco_compra, DECIMAL(12,3))", t);
+        // 7. Price cross-fill (order-dependent: 3 sequential scans)
+        execIgnore(c, "UPDATE "+t+" SET preco_compra=preco_custo  WHERE preco_compra=0", t);
+        execIgnore(c, "UPDATE "+t+" SET preco_custo =preco_compra WHERE preco_custo =0", t);
+        execIgnore(c, "UPDATE "+t+" SET valor_compra=preco_compra WHERE valor_compra=0", t);
 
-        // Margens
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro  = (preco_venda  - preco_custo)/preco_custo * 100 WHERE preco_venda  > 0", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro2 = (preco_venda2 - preco_custo)/preco_custo * 100 WHERE preco_venda2 > 0", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro3 = (preco_venda3 - preco_custo)/preco_custo * 100 WHERE preco_venda3 > 0", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro4 = (preco_venda4 - preco_custo)/preco_custo * 100 WHERE preco_venda4 > 0", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro  = CONVERT(margem_lucro,  DECIMAL(12,2))", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro2 = CONVERT(margem_lucro2, DECIMAL(12,2))", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro3 = CONVERT(margem_lucro3, DECIMAL(12,2))", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro4 = CONVERT(margem_lucro4, DECIMAL(12,2))", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro  = '0.000' WHERE margem_lucro  IS NULL OR margem_lucro  < 0", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro2 = '0.000' WHERE margem_lucro2 IS NULL OR margem_lucro2 < 0", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro3 = '0.000' WHERE margem_lucro3 IS NULL OR margem_lucro3 < 0", t);
-        execIgnore(c, "UPDATE "+t+" SET margem_lucro4 = '0.000' WHERE margem_lucro4 IS NULL OR margem_lucro4 < 0", t);
+        // 8. Flags S/N + ativo (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " ativo                 = COALESCE(ativo,1),"
+            + " pode_desconto         = COALESCE(pode_desconto,'S'),"
+            + " pode_balanca          = COALESCE(pode_balanca,'N'),"
+            + " pode_fracionado       = COALESCE(pode_fracionado,'N'),"
+            + " pode_lote             = COALESCE(pode_lote,'N'),"
+            + " pode_comissao         = COALESCE(pode_comissao,'S'),"
+            + " pode_lerpeso          = COALESCE(pode_lerpeso,'N'),"
+            + " pode_atualizarncm     = COALESCE(pode_atualizarncm,'S'),"
+            + " pode_producao_propria = COALESCE(pode_producao_propria,'n')", t);
+        execIgnore(c, "UPDATE "+t+" SET ativo=0 WHERE nome=''", t);
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " pode_balanca    = CASE WHEN pode_balanca   ='N' AND SUBSTRING_INDEX(estoque,'.',-1)>0 THEN 'S' ELSE pode_balanca    END,"
+            + " pode_fracionado = CASE WHEN pode_fracionado='N' AND SUBSTRING_INDEX(estoque,'.',-1)>0 THEN 'S' ELSE pode_fracionado END", t);
 
-        // Preços duplicados
-        execIgnore(c, "UPDATE "+t+" SET preco_venda2 = 0, margem_lucro2 = 0 WHERE preco_venda2 = preco_venda", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda3 = 0, margem_lucro3 = 0 WHERE preco_venda3 = preco_venda  OR preco_venda3 = preco_venda2", t);
-        execIgnore(c, "UPDATE "+t+" SET preco_venda4 = 0, margem_lucro4 = 0 WHERE preco_venda4 = preco_venda  OR preco_venda4 = preco_venda3 OR preco_venda4 = preco_venda2", t);
-        execIgnore(c, "UPDATE "+t+" SET qtd_minimapv2 = 0.000 WHERE preco_venda2 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado2 = 0 WHERE preco_venda2 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado3 = 0 WHERE preco_venda3 = 0.000", t);
-        execIgnore(c, "UPDATE "+t+" SET id_unidadeatacado4 = 0 WHERE preco_venda4 = 0.000", t);
+        // 9. Tributação defaults + LPAD (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " trib_ipisaida    = CASE WHEN trib_ipisaida    IS NULL OR trib_ipisaida   ='' THEN '53' ELSE trib_ipisaida    END,"
+            + " trib_pissaida    = LPAD(CASE WHEN trib_pissaida    IS NULL OR trib_pissaida   ='' THEN '7' ELSE trib_pissaida    END,2,'0'),"
+            + " trib_cofinssaida = LPAD(CASE WHEN trib_cofinssaida IS NULL OR trib_cofinssaida='' THEN '7' ELSE trib_cofinssaida END,2,'0')", t);
 
-        // EAN / medicamento / imendes (ignorados se colunas não existirem)
-        execIgnore(c, "UPDATE "+t+" SET cod_ean      = NULL WHERE cod_ean      = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo_med   = NULL WHERE cod_ean      = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET tipo_med     = '' WHERE tipo_med       IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET tabela_med   = '' WHERE tabela_med     IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET linha_med    = '' WHERE linha_med      IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET ref_anvisa_med = NULL WHERE ref_anvisa_med = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET portaria_med = '' WHERE portaria_med   IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET rms_med      = ' .    .    .   - ' WHERE rms_med IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET rms_med      = ' .    .    .   - ' WHERE rms_med = '...-'", t);
-        execIgnore(c, "UPDATE "+t+" SET data_vigencia_med   = NULL WHERE data_vigencia_med   = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET edicao_pharmacos    = NULL WHERE edicao_pharmacos    = ''", t);
-        execIgnore(c, "UPDATE "+t+" SET med_classeterapeutica         = '' WHERE med_classeterapeutica         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET med_unidademedida             = '' WHERE med_unidademedida             IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET med_usoprolongado             = '' WHERE med_usoprolongado             IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET med_podeatualizar             = 'S' WHERE med_podeatualizar            IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET med_precovendafpop            = 0.000 WHERE med_precovendafpop         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET med_margemfpop                = 0.000 WHERE med_margemfpop             IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET med_precoVendaFpopBolsaFamilia= 0.000 WHERE med_precoVendaFpopBolsaFamilia IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET med_margemFpopBolsaFamilia    = 0.000 WHERE med_margemFpopBolsaFamilia    IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET med_apresentacaofpop          = 0.000 WHERE med_apresentacaofpop           IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET imendes_codigointerno         = '' WHERE imendes_codigointerno         IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET imendes_produtonome           = '' WHERE imendes_produtonome           IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET imendes_datahoraalteracacao   = NULL WHERE imendes_datahoraalteracacao = ''", t);
+        // 10. Dates + rms_med (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " datahora_cadastro    = COALESCE(datahora_cadastro, NOW()),"
+            + " datahora_alteracao   = COALESCE(datahora_alteracao, NOW()),"
+            + " rms_med              = CASE WHEN rms_med IS NULL OR rms_med='...-' THEN ' .    .    .   - ' ELSE rms_med END,"
+            + " data_promocaoinicial = CASE WHEN data_promocaoinicial='' OR data_promocaoinicial='0000-00-00' OR preco_promocao=0 THEN NULL ELSE data_promocaoinicial END,"
+            + " data_promocaofinal   = CASE WHEN data_promocaofinal  ='' OR data_promocaofinal  ='0000-00-00' OR preco_promocao=0 THEN NULL ELSE data_promocaofinal   END", t);
 
-        // TRIM + UPPER + SUBS
-        execIgnore(c, "UPDATE "+t+" SET nome      = TRIM(UPPER(nome))", t);
-        execIgnore(c, "UPDATE "+t+" SET descricao = TRIM(UPPER(descricao))", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo    = TRIM(codigo)", t);
-        execIgnore(c, "UPDATE "+t+" SET referencia= TRIM(referencia)", t);
-        execIgnore(c, "UPDATE "+t+" SET codigo_barras = TRIM(codigo_barras)", t);
+        // 11. Normalize decimal precision (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " preco_venda  = CONVERT(preco_venda,  DECIMAL(12,3)),"
+            + " preco_venda2 = CONVERT(preco_venda2, DECIMAL(12,3)),"
+            + " preco_venda3 = CONVERT(preco_venda3, DECIMAL(12,3)),"
+            + " preco_venda4 = CONVERT(preco_venda4, DECIMAL(12,3)),"
+            + " preco_custo  = CONVERT(preco_custo,  DECIMAL(12,3)),"
+            + " preco_compra = CONVERT(preco_compra, DECIMAL(12,3))", t);
 
+        // 12. Calculate margins (1 scan)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " margem_lucro  = CASE WHEN preco_venda >0 AND preco_custo>0 THEN CONVERT((preco_venda -preco_custo)/preco_custo*100,DECIMAL(12,2)) ELSE 0 END,"
+            + " margem_lucro2 = CASE WHEN preco_venda2>0 AND preco_custo>0 THEN CONVERT((preco_venda2-preco_custo)/preco_custo*100,DECIMAL(12,2)) ELSE 0 END,"
+            + " margem_lucro3 = CASE WHEN preco_venda3>0 AND preco_custo>0 THEN CONVERT((preco_venda3-preco_custo)/preco_custo*100,DECIMAL(12,2)) ELSE 0 END,"
+            + " margem_lucro4 = CASE WHEN preco_venda4>0 AND preco_custo>0 THEN CONVERT((preco_venda4-preco_custo)/preco_custo*100,DECIMAL(12,2)) ELSE 0 END", t);
+
+        // 13. Duplicate prices → 0 (3 sequential scans — each reads prior result)
+        execIgnore(c, "UPDATE "+t+" SET preco_venda2=0, margem_lucro2=0 WHERE preco_venda2=preco_venda", t);
+        execIgnore(c, "UPDATE "+t+" SET preco_venda3=0, margem_lucro3=0 WHERE preco_venda3=preco_venda OR preco_venda3=preco_venda2", t);
+        execIgnore(c, "UPDATE "+t+" SET preco_venda4=0, margem_lucro4=0 WHERE preco_venda4=preco_venda OR preco_venda4=preco_venda3 OR preco_venda4=preco_venda2", t);
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " qtd_minimapv2      = CASE WHEN preco_venda2=0 THEN 0 ELSE qtd_minimapv2    END,"
+            + " id_unidadeatacado2 = CASE WHEN preco_venda2=0 THEN 0 ELSE id_unidadeatacado2 END,"
+            + " id_unidadeatacado3 = CASE WHEN preco_venda3=0 THEN 0 ELSE id_unidadeatacado3 END,"
+            + " id_unidadeatacado4 = CASE WHEN preco_venda4=0 THEN 0 ELSE id_unidadeatacado4 END", t);
+
+        // 14. EAN / medicina / imendes optional fields (execIgnore handles missing columns)
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " cod_ean           = NULLIF(cod_ean,''),"
+            + " codigo_med        = CASE WHEN cod_ean='' THEN NULL ELSE codigo_med END,"
+            + " ref_anvisa_med    = NULLIF(ref_anvisa_med,''),"
+            + " data_vigencia_med = NULLIF(data_vigencia_med,''),"
+            + " edicao_pharmacos  = NULLIF(edicao_pharmacos,''),"
+            + " imendes_datahoraalteracacao = NULLIF(imendes_datahoraalteracacao,'')", t);
+        execIgnore(c, "UPDATE "+t+" SET"
+            + " tipo_med              = COALESCE(tipo_med,''),"
+            + " tabela_med            = COALESCE(tabela_med,''),"
+            + " linha_med             = COALESCE(linha_med,''),"
+            + " portaria_med          = COALESCE(portaria_med,''),"
+            + " med_classeterapeutica = COALESCE(med_classeterapeutica,''),"
+            + " med_unidademedida     = COALESCE(med_unidademedida,''),"
+            + " med_usoprolongado     = COALESCE(med_usoprolongado,''),"
+            + " med_podeatualizar     = COALESCE(med_podeatualizar,'S'),"
+            + " med_precovendafpop             = COALESCE(med_precovendafpop,0),"
+            + " med_margemfpop                 = COALESCE(med_margemfpop,0),"
+            + " med_precoVendaFpopBolsaFamilia = COALESCE(med_precoVendaFpopBolsaFamilia,0),"
+            + " med_margemFpopBolsaFamilia     = COALESCE(med_margemFpopBolsaFamilia,0),"
+            + " med_apresentacaofpop           = COALESCE(med_apresentacaofpop,0),"
+            + " imendes_codigointerno          = COALESCE(imendes_codigointerno,''),"
+            + " imendes_produtonome            = COALESCE(imendes_produtonome,'')", t);
+
+        // 15. TRIM + UPPER + all text substitutions via chained REPLACE (2 scans: nome, descricao)
         for (String campo : new String[]{"nome", "descricao"}) {
-            for (String[] s : SUBS)  execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+",'"+s[0]+"','"+s[1]+"')", t);
-            for (String[] s : SUBS2) execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+",'"+s[0]+"','"+s[1]+"')", t);
-            execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+", LEFT("+campo+",1),'') WHERE LEFT("+campo+",1)  = ' '", t);
-            execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+", RIGHT("+campo+",1),'') WHERE RIGHT("+campo+",1) = ' '", t);
+            String expr = buildReplaceChain("TRIM(UPPER(" + campo + "))");
+            execIgnore(c, "UPDATE "+t+" SET "+campo+"=TRIM("+expr+")", t);
         }
+        execIgnore(c, "UPDATE "+t+" SET codigo=TRIM(codigo), referencia=TRIM(referencia), codigo_barras=TRIM(codigo_barras)", t);
+    }
+
+    /** Builds nested REPLACE(REPLACE(..., from, to), ...) chain for all SUBS and SUBS2. */
+    private static String buildReplaceChain(String expr) {
+        for (String[] s : SUBS)  expr = "REPLACE(" + expr + ",'" + s[0].replace("'","''") + "','" + s[1].replace("'","''") + "')";
+        for (String[] s : SUBS2) expr = "REPLACE(" + expr + ",'" + s[0].replace("'","''") + "','" + s[1].replace("'","''") + "')";
+        return expr;
     }
 }
