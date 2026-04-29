@@ -553,10 +553,4 @@ public class AjusteProdutoStep extends AjusteBase {
         execIgnore(c, "UPDATE "+t+" SET codigo=TRIM(codigo), referencia=TRIM(referencia), codigo_barras=TRIM(codigo_barras)", t);
     }
 
-    /** Builds nested REPLACE(REPLACE(..., from, to), ...) chain for all SUBS and SUBS2. */
-    private static String buildReplaceChain(String expr) {
-        for (String[] s : SUBS)  expr = "REPLACE(" + expr + ",'" + s[0].replace("'","''") + "','" + s[1].replace("'","''") + "')";
-        for (String[] s : SUBS2) expr = "REPLACE(" + expr + ",'" + s[0].replace("'","''") + "','" + s[1].replace("'","''") + "')";
-        return expr;
-    }
 }

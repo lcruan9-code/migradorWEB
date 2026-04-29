@@ -345,15 +345,8 @@ public class AjusteClienteStep extends AjusteBase {
 
         execIgnore(c, "UPDATE "+t+" SET nome         = razao_social WHERE nome IS NULL OR nome = ''", t);
         execIgnore(c, "UPDATE "+t+" SET razao_social = nome WHERE tipo='J' AND (razao_social IS NULL OR razao_social='')", t);
-        execIgnore(c, "UPDATE "+t+" SET nome         = TRIM(UPPER(nome))", t);
-        execIgnore(c, "UPDATE "+t+" SET razao_social = TRIM(UPPER(razao_social))", t);
-        execIgnore(c, "UPDATE "+t+" SET endereco     = TRIM(UPPER(endereco))", t);
-        execIgnore(c, "UPDATE "+t+" SET referencia   = TRIM(UPPER(referencia))", t);
-        execIgnore(c, "UPDATE "+t+" SET bairro       = TRIM(UPPER(bairro))", t);
-
         for (String campo : new String[]{"nome", "razao_social", "endereco", "referencia", "bairro"}) {
-            for (String[] s : SUBS)  execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+",'"+s[0]+"','"+s[1]+"')", t);
-            for (String[] s : SUBS2) execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+",'"+s[0]+"','"+s[1]+"')", t);
+            execIgnore(c, "UPDATE "+t+" SET "+campo+"=TRIM("+buildReplaceChain("TRIM(UPPER("+campo+"))")+")", t);
         }
 
         for (String campo : new String[]{"numero", "cep", "ie", "rg", "cpf_cnpj"}) {

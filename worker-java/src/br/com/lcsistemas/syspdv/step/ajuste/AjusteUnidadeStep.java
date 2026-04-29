@@ -79,11 +79,8 @@ public class AjusteUnidadeStep extends AjusteBase {
         String t = "lc_sistemas.unidade";
         execIgnore(c, "UPDATE "+t+" SET nome = '' WHERE nome IS NULL", t);
         execIgnore(c, "UPDATE "+t+" SET descricao = '' WHERE descricao IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET nome      = TRIM(UPPER(nome))", t);
-        execIgnore(c, "UPDATE "+t+" SET descricao = TRIM(UPPER(descricao))", t);
         for (String campo : new String[]{"nome", "descricao"}) {
-            for (String[] s : SUBS)  execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+",'"+s[0]+"','"+s[1]+"')", t);
-            for (String[] s : SUBS2) execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+",'"+s[0]+"','"+s[1]+"')", t);
+            execIgnore(c, "UPDATE "+t+" SET "+campo+"=TRIM("+buildReplaceChain("TRIM(UPPER("+campo+"))")+")", t);
             execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+", LEFT("+campo+",1),'') WHERE LEFT("+campo+",1)  = ' '", t);
             execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+", RIGHT("+campo+",1),'') WHERE RIGHT("+campo+",1) = ' '", t);
         }

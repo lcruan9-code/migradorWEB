@@ -85,9 +85,7 @@ public class AjusteCategoriaStep extends AjusteBase {
     private void ajustarNomeTabela(Connection c, String tabela) {
         String t = "lc_sistemas." + tabela;
         execIgnore(c, "UPDATE "+t+" SET nome = '' WHERE nome IS NULL", t);
-        execIgnore(c, "UPDATE "+t+" SET nome = TRIM(UPPER(nome))", t);
-        for (String[] s : SUBS)  execIgnore(c, "UPDATE "+t+" SET nome = REPLACE(nome,'"+s[0]+"','"+s[1]+"')", t);
-        for (String[] s : SUBS2) execIgnore(c, "UPDATE "+t+" SET nome = REPLACE(nome,'"+s[0]+"','"+s[1]+"')", t);
+        execIgnore(c, "UPDATE "+t+" SET nome=TRIM("+buildReplaceChain("TRIM(UPPER(nome))")+")", t);
         execIgnore(c, "UPDATE "+t+" SET nome = REPLACE(nome, LEFT(nome,1),'') WHERE LEFT(nome,1) = ' '", t);
         execIgnore(c, "UPDATE "+t+" SET nome = REPLACE(nome, RIGHT(nome,1),'') WHERE RIGHT(nome,1) = ' '", t);
     }

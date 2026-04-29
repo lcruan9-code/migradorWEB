@@ -164,10 +164,9 @@ public class AjusteFornecedorStep extends AjusteBase {
         execIgnore(c, "UPDATE "+t+" SET nome         = razao_social WHERE nome IS NULL OR nome = ''", t);
         execIgnore(c, "UPDATE "+t+" SET razao_social = nome         WHERE razao_social IS NULL OR razao_social = ''", t);
 
-        execIgnore(c, "UPDATE "+t+" SET nome         = UPPER(nome)", t);
-        execIgnore(c, "UPDATE "+t+" SET razao_social = UPPER(razao_social)", t);
-        execIgnore(c, "UPDATE "+t+" SET endereco     = UPPER(endereco)", t);
-        execIgnore(c, "UPDATE "+t+" SET bairro       = UPPER(bairro)", t);
+        for (String campo : new String[]{"nome", "razao_social", "endereco", "bairro"}) {
+            execIgnore(c, "UPDATE "+t+" SET "+campo+"=TRIM("+buildReplaceChain("TRIM(UPPER("+campo+"))")+")", t);
+        }
 
         execIgnore(c,
             "UPDATE "+t+" SET cnpj_cpf = CONCAT("
@@ -179,10 +178,5 @@ public class AjusteFornecedorStep extends AjusteBase {
             + "SUBSTRING(cnpj_cpf,1,3),'.',SUBSTRING(cnpj_cpf,4,3),'.',"
             + "SUBSTRING(cnpj_cpf,7,3),'-',SUBSTRING(cnpj_cpf,10,2))"
             + " WHERE LENGTH(cnpj_cpf)=11 AND cnpj_cpf NOT LIKE ('%.%')", t);
-
-        for (String campo : new String[]{"nome", "razao_social", "endereco", "bairro"}) {
-            for (String[] s : SUBS)  execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+",'"+s[0]+"','"+s[1]+"')", t);
-            for (String[] s : SUBS2) execIgnore(c, "UPDATE "+t+" SET "+campo+" = REPLACE("+campo+",'"+s[0]+"','"+s[1]+"')", t);
-        }
     }
 }

@@ -69,6 +69,21 @@ public abstract class AjusteBase extends StepBase {
     };
 
     // =========================================================================
+    //  HELPERS — texto (consolidação de REPLACE)
+    // =========================================================================
+
+    /**
+     * Builds a nested REPLACE(REPLACE(...)) SQL expression applying all SUBS then SUBS2.
+     * Use instead of iterating SUBS/SUBS2 loops with individual UPDATE statements.
+     * Example: buildReplaceChain("TRIM(UPPER(nome))") → single UPDATE column=buildReplaceChain(...)
+     */
+    protected static String buildReplaceChain(String expr) {
+        for (String[] s : SUBS)  expr = "REPLACE(" + expr + ",'" + s[0].replace("'","''") + "','" + s[1].replace("'","''") + "')";
+        for (String[] s : SUBS2) expr = "REPLACE(" + expr + ",'" + s[0].replace("'","''") + "','" + s[1].replace("'","''") + "')";
+        return expr;
+    }
+
+    // =========================================================================
     //  HELPERS — data/hora
     // =========================================================================
     protected static String nowTs() {
