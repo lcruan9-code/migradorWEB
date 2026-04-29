@@ -73,6 +73,7 @@ public abstract class WorkerBase {
         server.createContext("/api/download",  new DownloadHandler());
         server.createContext("/api/cidades",   new CidadesHandler());
         server.createContext("/api/estados",   new EstadosHandler());
+        server.createContext("/api/version",   ex -> { addCors(ex); respond(ex, 200, "{\"v\":\"20260429\"}"); });
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         System.out.println("[" + getSistema().toUpperCase() + "] Worker rodando em http://localhost:" + porta);
